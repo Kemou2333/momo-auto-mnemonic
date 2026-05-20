@@ -13,10 +13,12 @@ Claude 每次运行流程：
   1. python3 run_mnemonics.py --fetch  → 查看待处理词
   2. 按 MNEMONIC_RULES.md 生成助记，填入下方 ALL_NOTES
   3. python3 run_mnemonics.py         → 提交并 push
+     脚本会自动把 processed.json push 到 main，并清空 ALL_NOTES 还原脚本
 """
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -27,25 +29,21 @@ from datetime import datetime, timezone, timedelta
 # ── 配置 ──────────────────────────────────────────────────────────────────────
 
 BASE_URL       = "https://open.maimemo.com/open/api/v1"
-PROCESSED_PATH = os.path.join(os.path.dirname(__file__), "processed.json")
-REPO_DIR       = os.path.dirname(__file__)
+SCRIPT_PATH    = os.path.abspath(__file__)
+PROCESSED_PATH = os.path.join(os.path.dirname(SCRIPT_PATH), "processed.json")
+REPO_DIR       = os.path.dirname(SCRIPT_PATH)
 SLEEP_BETWEEN  = 1.6
 RETRY_WAIT     = 60
 MAX_RETRIES    = 3
 
 TZ_SHANGHAI = timezone(timedelta(hours=8))
-# 墨墨学习日以凌晨 4:00 为分界
 MAIMEMO_DAY_START_HOUR = 4
 
 # ── ▼▼▼ Claude 每次填写这里 ▼▼▼ ──────────────────────────────────────────────
 #
 # 格式：(voc_id, spelling, note_type, note_text)
-#
-# note_type 可选值：
-#   词根词缀 / 词源 / 合成 / 派生 / 辨析 / 固定搭配 / 近反义词 / 串记 / 扩展 / 语法 / 其他
-#
-# note_text 用 \n 换行，纯文本不加 markdown，60-140 字
-# 一个词可以有多条 note（不同 note_type），每条单独列一行
+# note_type: 词根词缀 / 词源 / 合成 / 派生 / 辨析 / 固定搭配 / 近反义词 / 串记 / 扩展 / 语法 / 其他
+# note_text: 纯文本，用 \n 换行，60-140 字
 
 ALL_NOTES = [
     # (voc_id, spelling, note_type, note_text),
@@ -63,7 +61,6 @@ def get_token():
 
 
 def maimemo_today():
-    """返回当前墨墨学习日（凌晨 4:00 之前算前一天）"""
     now = datetime.now(TZ_SHANGHAI)
     if now.hour < MAIMEMO_DAY_START_HOUR:
         now = now - timedelta(days=1)
@@ -71,8 +68,6 @@ def maimemo_today():
 
 
 def date_range_iso(target_date):
-    """返回某个墨墨学习日的 [start, end] ISO 字符串。
-    墨墨学习日 = 当天 04:00 ~ 次日 03:59:59"""
     start = datetime.combine(target_date, datetime.min.time()).replace(
         hour=MAIMEMO_DAY_START_HOUR, tzinfo=TZ_SHANGHAI)
     end = start + timedelta(days=1) - timedelta(seconds=1)
@@ -126,7 +121,6 @@ def api_post(path, body, token):
 
 
 def fetch_today(token):
-    """墨墨今日词单（可能为空，如果还没打开 App）"""
     ok, result = api_post("/study/get_today_items", {"limit": 1000}, token)
     if not ok:
         return [], f"获取今日词失败：{result}"
@@ -135,7 +129,6 @@ def fetch_today(token):
 
 
 def fetch_by_date(target_date, token):
-    """按学习日期拉取词单（用 query_study_records 接口）"""
     start, end = date_range_iso(target_date)
     ok, result = api_post("/study/query_study_records",
                           {"next_study_date": {"start": start, "end": end}, "limit": 1000},
@@ -154,19 +147,16 @@ def cmd_fetch():
     today    = maimemo_today()
     tomorrow = today + timedelta(days=1)
 
-    # 来源 A：今日剩余词
     today_items, err_t = fetch_today(token)
     if err_t:
         print(err_t, file=sys.stderr)
         today_items = []
 
-    # 来源 B：明日词单
     tomorrow_items, err_m = fetch_by_date(tomorrow, token)
     if err_m:
         print(err_m, file=sys.stderr)
         tomorrow_items = []
 
-    # 合并去重
     seen_ids = set()
     combined = []
     for item in today_items + tomorrow_items:
@@ -190,6 +180,31 @@ def cmd_fetch():
         print(f'    # {item["voc_spelling"]}')
         print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", "note_text"),')
         print()
+
+
+def clear_all_notes_in_script():
+    """Submit 成功后，把脚本里的 ALL_NOTES 恢复成空列表。
+    通过正则匹配 ALL_NOTES = [...] 区块替换。"""
+    try:
+        with open(SCRIPT_PATH, "r", encoding="utf-8") as f:
+            content = f.read()
+        # 匹配从 "ALL_NOTES = [" 到 对应的 "]" 之间的所有内容
+        new_content, n = re.subn(
+            r"ALL_NOTES = \[.*?\n\]",
+            "ALL_NOTES = [\n    # (voc_id, spelling, note_type, note_text),\n]",
+            content,
+            count=1,
+            flags=re.DOTALL
+        )
+        if n == 1:
+            with open(SCRIPT_PATH, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            print("  ✓ ALL_NOTES 已清空（脚本已还原）")
+            return True
+        return False
+    except Exception as e:
+        print(f"  ⚠ 清空 ALL_NOTES 失败：{e}")
+        return False
 
 
 def cmd_submit():
@@ -230,6 +245,9 @@ def cmd_submit():
     save_processed(done_map)
     print(f"\nprocessed.json 已更新，共 {len(done_map)} 词")
 
+    # 清空 ALL_NOTES（不会被 commit，因为下面只 add processed.json，但还原状态更干净）
+    clear_all_notes_in_script()
+
     push_ok = _git_push(gh_token, len(new_words), date)
 
     print("\n" + "=" * 50)
@@ -255,6 +273,7 @@ def cmd_submit():
 
 
 def _git_push(gh_token, new_count, date_str):
+    """Push processed.json to main. 使用 HEAD:main 语法可以从任何分支推到 main。"""
     cmds = [
         ["git", "-C", REPO_DIR, "config", "user.email", "routine@claude.ai"],
         ["git", "-C", REPO_DIR, "config", "user.name", "Claude Routine"],
@@ -265,7 +284,8 @@ def _git_push(gh_token, new_count, date_str):
     cmds += [
         ["git", "-C", REPO_DIR, "add", "processed.json"],
         ["git", "-C", REPO_DIR, "commit", "-m", f"chore: {new_count} new mnemonics {date_str}"],
-        ["git", "-C", REPO_DIR, "push", "origin", "main"],
+        # 用 HEAD:main 显式推到 main 分支，即使当前在 feature 分支也能工作
+        ["git", "-C", REPO_DIR, "push", "origin", "HEAD:main"],
     ]
     for cmd in cmds:
         r = subprocess.run(cmd, capture_output=True, text=True)
