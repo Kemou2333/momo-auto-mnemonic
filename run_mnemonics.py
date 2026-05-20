@@ -3,8 +3,11 @@
 墨墨助记自动提交脚本
 
 用法：
-  python3 run_mnemonics.py          # 正式提交（ALL_NOTES 已填好时）
-  python3 run_mnemonics.py --fetch  # 仅拉取今日待处理单词并打印，不提交
+  python3 run_mnemonics.py --fetch    # 拉取明日词单（用于晚上预生成）
+  python3 run_mnemonics.py            # 正式提交（ALL_NOTES 已填好时）
+
+设计原则：晚上 9 点跑一次，拉取明天的词单 + 今天还没处理的剩余词，
+查重后批量生成助记，第二天早晨打开 App 就已经全部就绪。
 
 Claude 每次运行流程：
   1. python3 run_mnemonics.py --fetch  → 查看待处理词
@@ -31,6 +34,8 @@ RETRY_WAIT     = 60
 MAX_RETRIES    = 3
 
 TZ_SHANGHAI = timezone(timedelta(hours=8))
+# 墨墨学习日以凌晨 4:00 为分界
+MAIMEMO_DAY_START_HOUR = 4
 
 # ── ▼▼▼ Claude 每次填写这里 ▼▼▼ ──────────────────────────────────────────────
 #
@@ -57,21 +62,30 @@ def get_token():
     return token
 
 
-def today_str():
-    return datetime.now(TZ_SHANGHAI).strftime("%Y-%m-%d")
+def maimemo_today():
+    """返回当前墨墨学习日（凌晨 4:00 之前算前一天）"""
+    now = datetime.now(TZ_SHANGHAI)
+    if now.hour < MAIMEMO_DAY_START_HOUR:
+        now = now - timedelta(days=1)
+    return now.date()
+
+
+def date_range_iso(target_date):
+    """返回某个墨墨学习日的 [start, end] ISO 字符串。
+    墨墨学习日 = 当天 04:00 ~ 次日 03:59:59"""
+    start = datetime.combine(target_date, datetime.min.time()).replace(
+        hour=MAIMEMO_DAY_START_HOUR, tzinfo=TZ_SHANGHAI)
+    end = start + timedelta(days=1) - timedelta(seconds=1)
+    return start.isoformat(), end.isoformat()
 
 
 def load_processed():
-    """加载 processed.json，返回 {voc_id: {"spelling": ..., "date": ...}}。
-    兼容旧格式 {voc_id: "spelling"} 和更旧的 list 格式。"""
     try:
         with open(PROCESSED_PATH, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, list):
-            # 最旧格式：[{"voc_id": ..., "spelling": ...}, ...]
             return {item["voc_id"]: {"spelling": item["spelling"], "date": "unknown"}
                     for item in data}
-        # 检查值是字符串（旧格式）还是 dict（新格式）
         result = {}
         for voc_id, val in data.items():
             if isinstance(val, str):
@@ -84,7 +98,6 @@ def load_processed():
 
 
 def save_processed(done_map):
-    """保存 {voc_id: {"spelling": ..., "date": ...}} 到 processed.json。"""
     with open(PROCESSED_PATH, "w", encoding="utf-8") as f:
         json.dump(done_map, f, ensure_ascii=False, indent=2)
 
@@ -112,27 +125,66 @@ def api_post(path, body, token):
     return False, f"已达最大重试次数（{MAX_RETRIES}）"
 
 
-def fetch_pending(token, done_set):
+def fetch_today(token):
+    """墨墨今日词单（可能为空，如果还没打开 App）"""
     ok, result = api_post("/study/get_today_items", {"limit": 1000}, token)
     if not ok:
-        print(f"获取今日单词失败：{result}", file=sys.stderr)
-        sys.exit(1)
+        return [], f"获取今日词失败：{result}"
     items = result["data"]["today_items"]
-    pending = [i for i in items if i["voc_id"] not in done_set]
-    return items, pending
+    return [{"voc_id": i["voc_id"], "voc_spelling": i["voc_spelling"]} for i in items], None
+
+
+def fetch_by_date(target_date, token):
+    """按学习日期拉取词单（用 query_study_records 接口）"""
+    start, end = date_range_iso(target_date)
+    ok, result = api_post("/study/query_study_records",
+                          {"next_study_date": {"start": start, "end": end}, "limit": 1000},
+                          token)
+    if not ok:
+        return [], f"获取 {target_date} 词单失败：{result}"
+    records = result["data"]["records"]
+    return [{"voc_id": r["voc_id"], "voc_spelling": r["voc_spelling"]} for r in records], None
 
 
 def cmd_fetch():
     token = get_token()
     done_map = load_processed()
     done_set = set(done_map.keys())
-    all_items, pending = fetch_pending(token, done_set)
 
-    already_done = len(all_items) - len(pending)
-    print(f"今日单词：{len(all_items)} 词  |  已处理：{already_done} 词  |  待处理：{len(pending)} 词\n")
+    today    = maimemo_today()
+    tomorrow = today + timedelta(days=1)
+
+    # 来源 A：今日剩余词
+    today_items, err_t = fetch_today(token)
+    if err_t:
+        print(err_t, file=sys.stderr)
+        today_items = []
+
+    # 来源 B：明日词单
+    tomorrow_items, err_m = fetch_by_date(tomorrow, token)
+    if err_m:
+        print(err_m, file=sys.stderr)
+        tomorrow_items = []
+
+    # 合并去重
+    seen_ids = set()
+    combined = []
+    for item in today_items + tomorrow_items:
+        if item["voc_id"] not in seen_ids:
+            seen_ids.add(item["voc_id"])
+            combined.append(item)
+
+    pending = [i for i in combined if i["voc_id"] not in done_set]
+    already_done = len(combined) - len(pending)
+
+    print(f"今日剩余：{len(today_items)} 词")
+    print(f"明日安排：{len(tomorrow_items)} 词")
+    print(f"合并去重：{len(combined)} 词  |  已处理：{already_done}  |  待处理：{len(pending)}\n")
+
     if not pending:
-        print("本次无新增，所有今日单词均已处理。")
+        print("本次无新增，所有词均已处理。")
         return
+
     print("待处理词（复制填入 ALL_NOTES）：\n")
     for item in pending:
         print(f'    # {item["voc_spelling"]}')
@@ -149,7 +201,7 @@ def cmd_submit():
     gh_token = os.environ.get("GH_TOKEN", "")
     done_map = load_processed()
     done_set = set(done_map.keys())
-    date     = today_str()
+    date     = maimemo_today().strftime("%Y-%m-%d")
 
     skipped   = {s for v, s, _, _ in ALL_NOTES if v in done_set}
     to_submit = [(v, s, t, n) for v, s, t, n in ALL_NOTES if v not in done_set]
