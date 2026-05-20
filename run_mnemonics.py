@@ -26,25 +26,21 @@ from datetime import datetime, timezone, timedelta
 BASE_URL       = "https://open.maimemo.com/open/api/v1"
 PROCESSED_PATH = os.path.join(os.path.dirname(__file__), "processed.json")
 REPO_DIR       = os.path.dirname(__file__)
-SLEEP_BETWEEN  = 1.6   # 秒，API 限速 60s/40次，1.6s 间隔留有余量
-RETRY_WAIT     = 60    # 429 时等待秒数
+SLEEP_BETWEEN  = 1.6
+RETRY_WAIT     = 60
 MAX_RETRIES    = 3
 
 TZ_SHANGHAI = timezone(timedelta(hours=8))
 
 # ── ▼▼▼ Claude 每次填写这里 ▼▼▼ ──────────────────────────────────────────────
 #
-# 格式：每条 note 是一个 tuple：
-#   (voc_id, spelling, note_type, note_text)
+# 格式：(voc_id, spelling, note_type, note_text)
 #
 # note_type 可选值：
 #   词根词缀 / 词源 / 合成 / 派生 / 辨析 / 固定搭配 / 近反义词 / 串记 / 扩展 / 语法 / 其他
 #
-# note_text 用 \n 换行，不超过 80 字，纯文本不加 markdown
-#
-# 一个词可以有多条 note（不同 note_type），每条单独列一行即可
-#
-# 运行 `python3 run_mnemonics.py --fetch` 可获取待处理词的 voc_id 和 spelling
+# note_text 用 \n 换行，纯文本不加 markdown，60-140 字
+# 一个词可以有多条 note（不同 note_type），每条单独列一行
 
 ALL_NOTES = [
     # (voc_id, spelling, note_type, note_text),
@@ -61,18 +57,34 @@ def get_token():
     return token
 
 
+def today_str():
+    return datetime.now(TZ_SHANGHAI).strftime("%Y-%m-%d")
+
+
 def load_processed():
+    """加载 processed.json，返回 {voc_id: {"spelling": ..., "date": ...}}。
+    兼容旧格式 {voc_id: "spelling"} 和更旧的 list 格式。"""
     try:
         with open(PROCESSED_PATH, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, list):
-            return {item["voc_id"]: item["spelling"] for item in data}
-        return data
+            # 最旧格式：[{"voc_id": ..., "spelling": ...}, ...]
+            return {item["voc_id"]: {"spelling": item["spelling"], "date": "unknown"}
+                    for item in data}
+        # 检查值是字符串（旧格式）还是 dict（新格式）
+        result = {}
+        for voc_id, val in data.items():
+            if isinstance(val, str):
+                result[voc_id] = {"spelling": val, "date": "unknown"}
+            else:
+                result[voc_id] = val
+        return result
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
 def save_processed(done_map):
+    """保存 {voc_id: {"spelling": ..., "date": ...}} 到 processed.json。"""
     with open(PROCESSED_PATH, "w", encoding="utf-8") as f:
         json.dump(done_map, f, ensure_ascii=False, indent=2)
 
@@ -101,7 +113,6 @@ def api_post(path, body, token):
 
 
 def fetch_pending(token, done_set):
-    """拉取今日单词，过滤已处理，返回待处理列表。"""
     ok, result = api_post("/study/get_today_items", {"limit": 1000}, token)
     if not ok:
         print(f"获取今日单词失败：{result}", file=sys.stderr)
@@ -112,7 +123,6 @@ def fetch_pending(token, done_set):
 
 
 def cmd_fetch():
-    """--fetch 模式：打印今日待处理词，供 Claude 生成助记用。"""
     token = get_token()
     done_map = load_processed()
     done_set = set(done_map.keys())
@@ -123,7 +133,7 @@ def cmd_fetch():
     if not pending:
         print("本次无新增，所有今日单词均已处理。")
         return
-    print("待处理词（复制 voc_id 填入 ALL_NOTES）：\n")
+    print("待处理词（复制填入 ALL_NOTES）：\n")
     for item in pending:
         print(f'    # {item["voc_spelling"]}')
         print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", "note_text"),')
@@ -131,20 +141,19 @@ def cmd_fetch():
 
 
 def cmd_submit():
-    """正式提交模式：提交 ALL_NOTES 中的助记并 push。"""
     if not ALL_NOTES:
         print("ALL_NOTES 为空，请先填写助记再运行。")
         sys.exit(0)
 
-    token   = get_token()
+    token    = get_token()
     gh_token = os.environ.get("GH_TOKEN", "")
     done_map = load_processed()
     done_set = set(done_map.keys())
+    date     = today_str()
 
-    # 过滤已处理
-    skipped = {spelling for voc_id, spelling, _, _ in ALL_NOTES if voc_id in done_set}
+    skipped   = {s for v, s, _, _ in ALL_NOTES if v in done_set}
     to_submit = [(v, s, t, n) for v, s, t, n in ALL_NOTES if v not in done_set]
-    new_words  = {v: s for v, s, _, _ in to_submit}
+    new_words = {v: s for v, s, _, _ in to_submit}
 
     print(f"待提交：{len(to_submit)} 条 note（{len(new_words)} 词）  |  跳过已处理：{len(skipped)} 词\n")
 
@@ -152,27 +161,25 @@ def cmd_submit():
 
     for i, (voc_id, spelling, note_type, note_text) in enumerate(to_submit, 1):
         print(f"[{i}/{len(to_submit)}] {spelling} | {note_type}")
-        ok, result = api_post("/notes", {"note": {"voc_id": voc_id, "note_type": note_type, "note": note_text}}, token)
+        ok, result = api_post("/notes", {
+            "note": {"voc_id": voc_id, "note_type": note_type, "note": note_text}
+        }, token)
         if ok:
             print("  ✓")
             success += 1
             submitted.add(voc_id)
-            done_map[voc_id] = spelling
+            done_map[voc_id] = {"spelling": spelling, "date": date}
         else:
             print(f"  ✗ {result}")
             fail_list.append((spelling, note_type, str(result)))
         if i < len(to_submit):
             time.sleep(SLEEP_BETWEEN)
 
-    # 写回 processed.json
     save_processed(done_map)
     print(f"\nprocessed.json 已更新，共 {len(done_map)} 词")
 
-    # Git push
-    date_str = datetime.now(TZ_SHANGHAI).strftime("%Y-%m-%d")
-    push_ok = _git_push(gh_token, len(new_words), date_str)
+    push_ok = _git_push(gh_token, len(new_words), date)
 
-    # 汇报
     print("\n" + "=" * 50)
     print(f"新增：{len(new_words)} 词，{success} 条 note 成功")
     print(f"跳过（已处理）：{len(skipped)} 词")
