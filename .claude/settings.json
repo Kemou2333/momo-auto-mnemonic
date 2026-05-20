@@ -1,16 +1,26 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git *)",
+      "Bash(git add processed.json)",
+      "Bash(git commit *)",
+      "Bash(git config *)",
+      "Bash(git remote set-url *)",
+      "Bash(git push origin main)",
       "Bash(python3 run_mnemonics.py*)",
       "mcp__github__*"
     ],
     "deny": [
+      "Bash(git branch*)",
+      "Bash(git checkout -b*)",
+      "Bash(git push origin HEAD*)",
+      "Bash(git push --set-upstream*)",
       "Write(CLAUDE.md)",
       "Write(MNEMONIC_RULES.md)",
       "Write(README.md)",
       "Write(run_mnemonics.py)",
-      "Write(.claude/settings.json)"
+      "Write(processed.json)",
+      "Write(.claude/settings.json)",
+      "Write(scripts/gen_chart.py)"
     ]
   },
   "env": {
