@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "mcp__github__*"
+    ]
+  },
+  "env": {
+    "GIT_AUTHOR_NAME": "Claude Routine",
+    "GIT_AUTHOR_EMAIL": "routine@claude.ai",
+    "GIT_COMMITTER_NAME": "Claude Routine",
+    "GIT_COMMITTER_EMAIL": "routine@claude.ai"
+  }
+}
