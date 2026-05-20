@@ -1,2 +1,0 @@
-Test file created at 2026-05-20
-Testing push permissions for Claude Code session.
