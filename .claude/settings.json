@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(git *)",
+      "Bash(python3 run_mnemonics.py*)",
       "mcp__github__*"
     ]
   },
