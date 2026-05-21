@@ -27,9 +27,9 @@
 
 ## 例句
 
-除了助记，每个词还会自动生成 1~3 条例句（墨墨 App 最多展示 3 条）。多义词尽量
-让每条例句对应一个不同义项，单义词 1 条够了。例句风格指南见
-[PHRASE_RULES.md](./PHRASE_RULES.md)（写作规范在迭代中）。
+除了助记，每个词还会自动生成 1~3 条例句（墨墨 App 最多展示 3 条）。多义词的例句
+和助记的义项顺序一一对应；单义词 1 条够了。例句可以是完整句、固定搭配或动词短语。
+详细风格指南见 [PHRASE_RULES.md](./PHRASE_RULES.md)。
 
 ## 工作原理
 
@@ -50,7 +50,7 @@
 .
 ├── CLAUDE.md              # Routine 每次读的执行流程
 ├── MNEMONIC_RULES.md      # 助记风格规则
-├── PHRASE_RULES.md        # 例句风格规则（写作规范在迭代中）
+├── PHRASE_RULES.md        # 例句风格规则
 ├── CONTEXT.md             # 给新 AI / 维护者的设计上下文
 ├── run_mnemonics.py       # 主脚本（拉词/提交/推送）
 ├── processed.json         # 已处理单词的查重记录

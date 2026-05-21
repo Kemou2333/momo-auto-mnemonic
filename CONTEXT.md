@@ -175,7 +175,7 @@ budge
 |---|---|---|
 | `CLAUDE.md` | Routine 每次运行时 Claude 读的流程指令 | 只能人类改 |
 | `MNEMONIC_RULES.md` | 助记风格规则与 note_type 选择指南 | 只能人类改 |
-| `PHRASE_RULES.md` | 例句风格规则（写作规范 TODO，先有骨架） | 只能人类改 |
+| `PHRASE_RULES.md` | 例句风格规则与对应关系指南 | 只能人类改 |
 | `run_mnemonics.py` | 唯一脚本，负责拉词/提交/推送一条龙 | 只能人类改逻辑，Claude 只能改 ALL_NOTES / ALL_PHRASES 区块 |
 | `processed.json` | 记录所有已处理过的词，查重的唯一依据 | 只能脚本写 |
 | `.claude/settings.json` | 权限配置（哪些 bash 命令允许/拒绝） | 只能人类改 |
@@ -328,8 +328,9 @@ Claude Code Routines 会创建 `claude/xxx-yyy-zzz` 这种 feature 分支。
 
 #### 风格规则
 
-写在 PHRASE_RULES.md。文件目前是骨架，具体写作风格留待 Kemou 和 AI 单独讨论后补全。
-在规则定稿前 AI 跑 Routine 遇到待补例句应该暂停确认，不要拍脑袋写。
+写在 PHRASE_RULES.md。核心：用最自然的句子展示词的核心义项；多义词的例句要和
+助记的义项顺序一一对应；可以用完整句、短语、动词搭配三种形态；每条例句包含
+phrase_en（英文）+ phrase_zh（中文翻译）。
 
 #### 未来可能的扩展
 
