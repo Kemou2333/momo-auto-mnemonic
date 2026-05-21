@@ -175,7 +175,8 @@ budge
 |---|---|---|
 | `CLAUDE.md` | Routine 每次运行时 Claude 读的流程指令 | 只能人类改 |
 | `MNEMONIC_RULES.md` | 助记风格规则与 note_type 选择指南 | 只能人类改 |
-| `run_mnemonics.py` | 唯一脚本，负责拉词/提交/推送一条龙 | 只能人类改逻辑，Claude 只能改 ALL_NOTES 区块 |
+| `PHRASE_RULES.md` | 例句风格规则（写作规范 TODO，先有骨架） | 只能人类改 |
+| `run_mnemonics.py` | 唯一脚本，负责拉词/提交/推送一条龙 | 只能人类改逻辑，Claude 只能改 ALL_NOTES / ALL_PHRASES 区块 |
 | `processed.json` | 记录所有已处理过的词，查重的唯一依据 | 只能脚本写 |
 | `.claude/settings.json` | 权限配置（哪些 bash 命令允许/拒绝） | 只能人类改 |
 | `scripts/gen_chart.py` | GitHub Actions 用，生成累计词数折线图 | 偶尔改 |
@@ -292,16 +293,43 @@ Claude Code Routines 会创建 `claude/xxx-yyy-zzz` 这种 feature 分支。
 
 ## 未来扩展规划
 
-### 例句生成（用户提到）
+### 例句生成（已实现）
 
-墨墨 API 有 `/phrases` 端点用于创建例句。设计建议：
+每日 Routine 现在同时生成助记和例句。墨墨 API 的 `/phrases` 端点用于创建例句，每条
+例句需要 `voc_id`、英文句子（`phrase`）、中文翻译（`interpretation`）、`tags`（传空）、
+`origin`（传 "AI 生成"）。墨墨 App 会自己识别英文句子中的目标词位置并在 UI 上高亮，
+中文翻译里对应短语的虚线标注也是 App 渲染的，API 不需要也不接受高亮位置参数。
 
-- 新加一个 `ALL_PHRASES` 列表，格式 `(voc_id, spelling, phrase_text)`
-- 或复用 `ALL_NOTES` 加一个"phrase"类型，脚本根据类型走不同 API
-- 例句风格：短句、用学过的常见词、突出该词的核心义项
-- 一个词配 1-2 句即可，太多会稀释记忆
+#### 数据结构
 
-注意：墨墨例句也有 note_type 类似的分类（语法点/搭配/场景），可以参照设计。
+`run_mnemonics.py` 里有两个并列的填写区：
+
+- `ALL_NOTES`：`(voc_id, spelling, note_type, note_text)`，每词 1~N 条
+- `ALL_PHRASES`：`(voc_id, spelling, phrase_en, phrase_zh)`，每词 1~3 条（多义词覆盖不同义项）
+
+`processed.json` 升级为 `{voc_id: {spelling, note_date, phrase_date}}`，分别记录助记
+和例句的提交日期。旧格式（`{spelling, date}`）启动时自动归一化成
+`note_date = date, phrase_date = null`，无需手动迁移。
+
+#### 待处理判定
+
+`--fetch` 列出的"待处理"是任意一项还缺的词：`note_date` 缺 → 列入 ALL_NOTES 模板，
+`phrase_date` 缺 → 列入 ALL_PHRASES 模板。两个都缺则两块都出现。
+
+副作用：所有 1500+ 老词当前都只有 note_date 没有 phrase_date，将来出现在今日/明日
+复习队列里时会自动被标记成"待补例句"。这是预期行为，例句通过日常复习自然回填，
+不需要单独的 backfill 模式（也是当时设计取舍的结果——避免一次性补几百条例句把
+Routine 撑爆，也避免 API 在短时间内被打满）。
+
+#### 风格规则
+
+写在 PHRASE_RULES.md。文件目前是骨架，具体写作风格留待 Kemou 和 AI 单独讨论后补全。
+在规则定稿前 AI 跑 Routine 遇到待补例句应该暂停确认，不要拍脑袋写。
+
+#### 未来可能的扩展
+
+- 老词例句的批量回填（`--backfill-phrases N`），目前没做，靠日常复习自然回填
+- 给例句加 `tags` 或 `origin` 来区分批次（比如 `origin="AI 生成 2026 高考"`）
 
 ### 老词批量回填（用户已请求，本次实现）
 

@@ -1,12 +1,14 @@
-# 墨墨助记自动生成
+# 墨墨助记 + 例句自动生成
 
 ## 这是什么
 
-这个项目每天自动为 Kemou（高三学生）的墨墨背单词账户生成助记。
+这个项目每天自动为 Kemou（高三学生）的墨墨背单词账户生成助记和例句。
 墨墨是一个间隔复习 App，每天会安排一批单词复习。
-你的任务是：晚上拉取明日词单和今日剩余词 → 为每个还没有助记的词生成助记 → 写入墨墨账户。
+你的任务是：晚上拉取明日词单和今日剩余词 → 为每个还缺助记或例句的词生成相应内容
+→ 写入墨墨账户。
 
-助记风格见 MNEMONIC_RULES.md，核心是找到词根/画面/本质逻辑串联所有义项，而不是简单翻译。
+助记风格见 MNEMONIC_RULES.md，核心是找到词根/画面/本质逻辑串联所有义项。
+例句风格见 PHRASE_RULES.md，每词 1~3 条，多义词覆盖不同义项。
 
 ## 运行时机与设计
 
@@ -20,7 +22,8 @@
 - 今日剩余的词
 - 明日已安排的词
 
-合并去重后扣掉 processed.json 里已处理的部分，剩下的就是本次要生成助记的词。
+合并去重后扣掉 processed.json 里已处理的部分，剩下的就是本次要生成助记/例句的词。
+一个词如果只有助记没有例句，也会被列入"待补例句"清单。
 
 ## 认证方式
 
@@ -35,6 +38,7 @@
 ### 第一步：了解规则
 
     view MNEMONIC_RULES.md
+    view PHRASE_RULES.md
 
 ### 第二步：拉取今日+明日待处理单词
 
@@ -42,13 +46,14 @@
 
 如果输出"本次无新增"，直接汇报结束。
 
-### 第三步：在脚本里填入助记
+### 第三步：在脚本里填入助记和例句
 
-按 MNEMONIC_RULES.md 生成助记，编辑 run_mnemonics.py 的 ALL_NOTES 列表。
+`--fetch` 输出会分两块：`ALL_NOTES`（待生成助记）和 `ALL_PHRASES`（待生成例句）。
+按 MNEMONIC_RULES.md 生成助记，按 PHRASE_RULES.md 生成例句，分别编辑两个区块。
 
-【极其重要】note_text 必须用 Python 三引号字符串 """..."""，不要用单引号或双引号。
-三引号字符串内可以容纳任何字符（中文引号、英文引号、单引号、斜杠等），不会和 Python
-语法冲突。换行直接在源码里换行，不要写 \n。
+【极其重要】所有文本字段（note_text / phrase_en / phrase_zh）都必须用 Python 三引号
+字符串 """..."""，不要用单引号或双引号。三引号字符串内可以容纳任何字符（中文引号、
+英文引号、单引号、斜杠等），不会和 Python 语法冲突。换行直接在源码里换行，不要写 \n。
 
 正确格式示例：
 
@@ -63,21 +68,36 @@
 搭配：jaw-dropping（令人惊掉下巴的）"""),
     ]
 
+    ALL_PHRASES = [
+        # nowadays
+        ("voc-xxx", "nowadays", """Nowadays, most people shop online.""",
+                                 """如今，大多数人都在网上购物。"""),
+
+        # jaw （多义词可以加 2~3 条覆盖不同义项）
+        ("voc-yyy", "jaw", """He broke his jaw in the accident.""",
+                            """他在事故中摔断了下巴。"""),
+        ("voc-yyy", "jaw", """The view was jaw-dropping.""",
+                            """那景色令人惊叹。"""),
+    ]
+
 错误格式示例（会导致语法错误）：
 
     ("voc-yyy", "jaw", "扩展", "下颌骨/"下巴"，配 jaw-dropping"),
         ^^^ 这里的英文双引号会让 Python 误以为字符串结束了
 
-如果你不确定怎么写，永远用三引号 """...""" 包裹 note_text，就不会出错。
+如果你不确定怎么写，永远用三引号 """...""" 包裹文本字段，就不会出错。
+
+例句数量：每个词 1~3 条，AI 自己判断。单义词 1 条够了；多义词尽量覆盖不同义项，
+不要写义项重复的例句。
 
 ### 第四步：提交
 
     python3 run_mnemonics.py
 
 脚本会自动完成所有后续操作：
-- POST 助记到墨墨 API
-- 更新 processed.json
-- 把 ALL_NOTES 还原为空
+- 先 POST 助记到 /notes，再 POST 例句到 /phrases
+- 更新 processed.json（分别记录 note_date 和 phrase_date）
+- 把 ALL_NOTES 和 ALL_PHRASES 都还原为空
 - git add processed.json（只这一个文件）
 - git commit + git push origin HEAD:main（直接推到 main）
 
@@ -107,8 +127,13 @@
 
 ## 关于 processed.json
 
-记录所有已处理过的词（voc_id → {spelling, date}），是查重的唯一依据。
-脚本自动读取和更新。你不需要、也不应该手动修改它。
+记录所有已处理过的词（voc_id → {spelling, note_date, phrase_date}），是查重的唯一依据。
+`note_date` 和 `phrase_date` 分别记录助记和例句各自的提交日期，任意一项缺失就会在
+下次 `--fetch` 里被列出来补。脚本自动读取和更新。你不需要、也不应该手动修改它。
+
+注意：旧的老词（只有助记没有例句）出现在今日/明日复习队列时，会被 `--fetch` 列入
+`ALL_PHRASES` 模板。这是预期行为——例句会通过日常复习自然回填。第一批运行可能例句
+条数较多，正常。
 
 ## 硬性约束（违反会损坏系统）
 
@@ -117,8 +142,8 @@
 - 不允许在脚本之外做任何 git 操作（脚本会自己 push）
 - 不允许创建分支或 PR
 - 不允许直接调用墨墨 API（所有 API 调用通过脚本完成）
-- 不允许修改 CLAUDE.md、MNEMONIC_RULES.md、README.md、settings.json 的内容
-- run_mnemonics.py 只允许修改 ALL_NOTES 区块，其他部分不能动
-- note_text 必须用三引号字符串 """..."""，违反会导致脚本无法运行
-- 助记由你直接生成，不调用外部 LLM API
+- 不允许修改 CLAUDE.md、MNEMONIC_RULES.md、PHRASE_RULES.md、README.md、settings.json 的内容
+- run_mnemonics.py 只允许修改 ALL_NOTES 和 ALL_PHRASES 区块，其他部分不能动
+- note_text / phrase_en / phrase_zh 必须用三引号字符串 """..."""，违反会导致脚本无法运行
+- 助记和例句由你直接生成，不调用外部 LLM API
 - 遇到 token 无效、网络持续失败等无法解决的问题，立即停止并说明原因

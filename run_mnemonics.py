@@ -39,9 +39,12 @@ MAIMEMO_DAY_START_HOUR = 4
 
 # ── ▼▼▼ Claude 每次填写这里 ▼▼▼ ──────────────────────────────────────────────
 #
-# 格式：(voc_id, spelling, note_type, note_text)
+# 助记格式：(voc_id, spelling, note_type, note_text)
+# 例句格式：(voc_id, spelling, phrase_en, phrase_zh)
+#   - 同一个 voc_id 可以在 ALL_PHRASES 出现 1~3 次（多义词覆盖不同义项）
+#   - 单义词写 1 条即可，不要硬凑
 #
-# 【重要】note_text 必须使用 Python 三引号字符串 """..."""
+# 【重要】所有文本字段必须使用 Python 三引号字符串 """..."""
 # 这样内容里有任何符号（包括英文双引号、单引号、反斜杠）都不会和 Python 语法冲突。
 #
 # 换行直接在源码里换行（不要写 \n）。示例：
@@ -49,11 +52,18 @@ MAIMEMO_DAY_START_HOUR = 4
 #     ("voc-xxx", "nowadays", "合成", """now + a + days（如今这些日子）
 # 强调"和过去对比的此刻"，常和时间状语连用"""),
 #
+#     ("voc-xxx", "nowadays", """Nowadays, most people shop online.""",
+#                              """如今，大多数人都在网上购物。"""),
+#
 # note_type 可选：词根词缀 / 词源 / 合成 / 派生 / 辨析 / 固定搭配 /
 #                近反义词 / 串记 / 扩展 / 语法 / 其他
 
 ALL_NOTES = [
     # (voc_id, spelling, note_type, note_text),
+]
+
+ALL_PHRASES = [
+    # (voc_id, spelling, phrase_en, phrase_zh),
 ]
 
 # ── ▲▲▲ 填写区结束 ▲▲▲ ────────────────────────────────────────────────────────
@@ -81,22 +91,48 @@ def date_range_iso(target_date):
     return start.isoformat(), end.isoformat()
 
 
+def _normalize_entry(spelling, raw):
+    """把任意历史结构归一为 {spelling, note_date, phrase_date}。
+
+    历史结构：
+      - 纯字符串：spelling                → note_date=unknown, phrase_date=None
+      - {spelling, date}                  → note_date=date,    phrase_date=None
+      - {spelling, note_date, phrase_date} → 直接用
+    """
+    if isinstance(raw, str):
+        return {"spelling": raw, "note_date": "unknown", "phrase_date": None}
+    spelling = raw.get("spelling", spelling)
+    if "note_date" in raw or "phrase_date" in raw:
+        return {
+            "spelling": spelling,
+            "note_date": raw.get("note_date"),
+            "phrase_date": raw.get("phrase_date"),
+        }
+    return {
+        "spelling": spelling,
+        "note_date": raw.get("date", "unknown"),
+        "phrase_date": None,
+    }
+
+
 def load_processed():
     try:
         with open(PROCESSED_PATH, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, list):
-            return {item["voc_id"]: {"spelling": item["spelling"], "date": "unknown"}
+            return {item["voc_id"]: _normalize_entry(item.get("spelling", ""), item)
                     for item in data}
-        result = {}
-        for voc_id, val in data.items():
-            if isinstance(val, str):
-                result[voc_id] = {"spelling": val, "date": "unknown"}
-            else:
-                result[voc_id] = val
-        return result
+        return {voc_id: _normalize_entry(voc_id, val) for voc_id, val in data.items()}
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+
+
+def needs_note(entry):
+    return entry is None or not entry.get("note_date")
+
+
+def needs_phrase(entry):
+    return entry is None or not entry.get("phrase_date")
 
 
 def save_processed(done_map):
@@ -180,7 +216,6 @@ def parse_n_argument(flag, default):
 def cmd_fetch():
     token = get_token()
     done_map = load_processed()
-    done_set = set(done_map.keys())
 
     today    = maimemo_today()
     tomorrow = today + timedelta(days=1)
@@ -202,31 +237,42 @@ def cmd_fetch():
             seen_ids.add(item["voc_id"])
             combined.append(item)
 
-    pending = [i for i in combined if i["voc_id"] not in done_set]
-    already_done = len(combined) - len(pending)
+    note_pending   = [i for i in combined if needs_note(done_map.get(i["voc_id"]))]
+    phrase_pending = [i for i in combined if needs_phrase(done_map.get(i["voc_id"]))]
+    both_done      = len(combined) - len({i["voc_id"] for i in note_pending + phrase_pending})
 
     print(f"今日剩余：{len(today_items)} 词")
     print(f"明日安排：{len(tomorrow_items)} 词")
-    print(f"合并去重：{len(combined)} 词  |  已处理：{already_done}  |  待处理：{len(pending)}\n")
+    print(f"合并去重：{len(combined)} 词  |  全部完成：{both_done}")
+    print(f"  缺助记：{len(note_pending)} 词  |  缺例句：{len(phrase_pending)} 词\n")
 
-    if not pending:
+    if not note_pending and not phrase_pending:
         print("本次无新增，所有词均已处理。")
         return
 
-    print('待处理词（复制填入 ALL_NOTES，note_text 必须用三引号 """..."""）：\n')
-    for item in pending:
-        print(f'    # {item["voc_spelling"]}')
-        print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", """note_text"""),')
-        print()
+    print('全部 note_text / phrase_en / phrase_zh 必须用三引号 """..."""\n')
+
+    if note_pending:
+        print("─── ALL_NOTES（待生成助记）───\n")
+        for item in note_pending:
+            print(f'    # {item["voc_spelling"]}')
+            print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", """note_text"""),')
+            print()
+
+    if phrase_pending:
+        print("─── ALL_PHRASES（待生成例句，每词 1~3 条，多义词覆盖不同义项）───\n")
+        for item in phrase_pending:
+            print(f'    # {item["voc_spelling"]}')
+            print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", """phrase_en""", """phrase_zh"""),')
+            print()
 
 
 def cmd_backfill():
     n = parse_n_argument("--backfill", 100)
     token = get_token()
     done_map = load_processed()
-    done_set = set(done_map.keys())
 
-    print(f"批量回填模式：本次拉取最多 {n} 个老词\n")
+    print(f"批量回填模式（仅助记）：本次拉取最多 {n} 个老词\n")
 
     all_words, err = fetch_all_records(token)
     if err:
@@ -241,11 +287,12 @@ def cmd_backfill():
             seen.add(w["voc_id"])
             unique.append(w)
 
-    pending_all = [w for w in unique if w["voc_id"] not in done_set]
+    pending_all = [w for w in unique if needs_note(done_map.get(w["voc_id"]))]
     pending = pending_all[:n]
 
+    note_done = sum(1 for v in done_map.values() if v.get("note_date"))
     print(f"学习计划共 {len(unique)} 词")
-    print(f"已处理 {len(done_set)} 词")
+    print(f"已有助记 {note_done} 词")
     print(f"剩余待回填 {len(pending_all)} 词，本次取 {len(pending)} 词\n")
 
     if not pending:
@@ -259,93 +306,176 @@ def cmd_backfill():
         print()
 
 
-def clear_all_notes_in_script():
+def clear_filled_areas_in_script():
     try:
         with open(SCRIPT_PATH, "r", encoding="utf-8") as f:
             content = f.read()
-        new_content, n = re.subn(
+        new_content, n1 = re.subn(
             r"ALL_NOTES = \[.*?\n\]",
             "ALL_NOTES = [\n    # (voc_id, spelling, note_type, note_text),\n]",
             content,
             count=1,
             flags=re.DOTALL
         )
-        if n == 1:
+        new_content, n2 = re.subn(
+            r"ALL_PHRASES = \[.*?\n\]",
+            "ALL_PHRASES = [\n    # (voc_id, spelling, phrase_en, phrase_zh),\n]",
+            new_content,
+            count=1,
+            flags=re.DOTALL
+        )
+        if n1 == 1 and n2 == 1:
             with open(SCRIPT_PATH, "w", encoding="utf-8") as f:
                 f.write(new_content)
-            print("  ✓ ALL_NOTES 已清空（脚本已还原）")
+            print("  ✓ ALL_NOTES / ALL_PHRASES 已清空（脚本已还原）")
             return True
+        print(f"  ⚠ 清空失败，匹配数：ALL_NOTES={n1}, ALL_PHRASES={n2}")
         return False
     except Exception as e:
-        print(f"  ⚠ 清空 ALL_NOTES 失败：{e}")
+        print(f"  ⚠ 清空填写区失败：{e}")
         return False
 
 
 def cmd_submit():
-    if not ALL_NOTES:
-        print("ALL_NOTES 为空，请先填写助记再运行。")
+    if not ALL_NOTES and not ALL_PHRASES:
+        print("ALL_NOTES 和 ALL_PHRASES 都为空，请先填写再运行。")
         sys.exit(0)
 
     token    = get_token()
     gh_token = os.environ.get("GH_TOKEN", "")
     done_map = load_processed()
-    done_set = set(done_map.keys())
     date     = maimemo_today().strftime("%Y-%m-%d")
 
-    skipped   = {s for v, s, _, _ in ALL_NOTES if v in done_set}
-    to_submit = [(v, s, t, n) for v, s, t, n in ALL_NOTES if v not in done_set]
-    new_words = {v: s for v, s, _, _ in to_submit}
+    # ── 分流：分别筛出需要提交的助记 / 例句 ────────────────────────────────
+    notes_to_submit = [
+        (v, s, t, n) for v, s, t, n in ALL_NOTES
+        if needs_note(done_map.get(v))
+    ]
+    notes_skipped = [(v, s) for v, s, _, _ in ALL_NOTES if not needs_note(done_map.get(v))]
 
-    print(f"待提交：{len(to_submit)} 条 note（{len(new_words)} 词）  |  跳过已处理：{len(skipped)} 词\n")
+    phrases_to_submit = [
+        (v, s, en, zh) for v, s, en, zh in ALL_PHRASES
+        if needs_phrase(done_map.get(v))
+    ]
+    phrases_skipped = [(v, s) for v, s, _, _ in ALL_PHRASES if not needs_phrase(done_map.get(v))]
 
-    success, fail_list, submitted = 0, [], set()
+    note_words   = {v: s for v, s, _, _ in notes_to_submit}
+    phrase_words = {v: s for v, s, _, _ in phrases_to_submit}
 
-    for i, (voc_id, spelling, note_type, note_text) in enumerate(to_submit, 1):
-        print(f"[{i}/{len(to_submit)}] {spelling} | {note_type}")
+    print(f"待提交助记：{len(notes_to_submit)} 条（{len(note_words)} 词）  |  跳过：{len(notes_skipped)} 词")
+    print(f"待提交例句：{len(phrases_to_submit)} 条（{len(phrase_words)} 词）  |  跳过：{len(phrases_skipped)} 词\n")
+
+    note_success, note_fail = 0, []
+    phrase_success, phrase_fail = 0, []
+    submitted_notes, submitted_phrases = set(), set()
+
+    # ── 第一批：提交助记 ────────────────────────────────────────────────
+    for i, (voc_id, spelling, note_type, note_text) in enumerate(notes_to_submit, 1):
+        print(f"[助记 {i}/{len(notes_to_submit)}] {spelling} | {note_type}")
         ok, result = api_post("/notes", {
             "note": {"voc_id": voc_id, "note_type": note_type, "note": note_text}
         }, token)
         if ok:
             print("  ✓")
-            success += 1
-            submitted.add(voc_id)
-            done_map[voc_id] = {"spelling": spelling, "date": date}
+            note_success += 1
+            submitted_notes.add(voc_id)
+            entry = done_map.get(voc_id) or {"spelling": spelling, "note_date": None, "phrase_date": None}
+            entry["spelling"] = spelling
+            entry["note_date"] = date
+            done_map[voc_id] = entry
         else:
             print(f"  ✗ {result}")
-            fail_list.append((spelling, note_type, str(result)))
-        if i < len(to_submit):
+            note_fail.append((spelling, note_type, str(result)))
+        if i < len(notes_to_submit):
             time.sleep(SLEEP_BETWEEN)
+
+    # ── 第二批：提交例句 ────────────────────────────────────────────────
+    if notes_to_submit and phrases_to_submit:
+        time.sleep(SLEEP_BETWEEN)
+
+    # 同一 voc_id 可能在 ALL_PHRASES 出现多次；只要至少一条成功就标记 phrase_date
+    phrase_ok_voc = set()
+    for i, (voc_id, spelling, phrase_en, phrase_zh) in enumerate(phrases_to_submit, 1):
+        preview = phrase_en.replace("\n", " ")[:40]
+        print(f"[例句 {i}/{len(phrases_to_submit)}] {spelling} | {preview}")
+        ok, result = api_post("/phrases", {
+            "phrase": {
+                "voc_id": voc_id,
+                "phrase": phrase_en,
+                "interpretation": phrase_zh,
+                "tags": [],
+                "origin": "AI 生成",
+            }
+        }, token)
+        if ok:
+            print("  ✓")
+            phrase_success += 1
+            submitted_phrases.add(voc_id)
+            phrase_ok_voc.add(voc_id)
+        else:
+            print(f"  ✗ {result}")
+            phrase_fail.append((spelling, preview, str(result)))
+        if i < len(phrases_to_submit):
+            time.sleep(SLEEP_BETWEEN)
+
+    for voc_id in phrase_ok_voc:
+        spelling = phrase_words.get(voc_id, done_map.get(voc_id, {}).get("spelling", ""))
+        entry = done_map.get(voc_id) or {"spelling": spelling, "note_date": None, "phrase_date": None}
+        entry["spelling"] = spelling or entry.get("spelling", "")
+        entry["phrase_date"] = date
+        done_map[voc_id] = entry
 
     save_processed(done_map)
     print(f"\nprocessed.json 已更新，共 {len(done_map)} 词")
 
-    clear_all_notes_in_script()
+    clear_filled_areas_in_script()
 
-    push_ok = _git_push(gh_token, len(new_words), date)
+    push_ok = _git_push(gh_token, len(note_words), len(phrase_words), date)
 
     print("\n" + "=" * 50)
-    print(f"新增：{len(new_words)} 词，{success} 条 note 成功")
-    print(f"跳过（已处理）：{len(skipped)} 词")
-    if fail_list:
-        print(f"失败：{len(fail_list)} 条")
-        for sp, nt, reason in fail_list:
+    print(f"新增助记：{len(note_words)} 词，{note_success} 条成功，{len(note_fail)} 条失败")
+    print(f"新增例句：{len(phrase_words)} 词，{phrase_success} 条成功，{len(phrase_fail)} 条失败")
+    if note_fail:
+        print("助记失败：")
+        for sp, nt, reason in note_fail:
             print(f"  - {sp} | {nt}: {reason[:80]}")
-    else:
-        print("失败：0 条")
+    if phrase_fail:
+        print("例句失败：")
+        for sp, pv, reason in phrase_fail:
+            print(f"  - {sp} | {pv}: {reason[:80]}")
     print(f"Git push：{'✓ 成功' if push_ok else '✗ 失败（processed.json 内容已打印备份）'}")
 
-    print("\n样本（前 8 条）：")
-    count = 0
-    for voc_id, spelling, note_type, note_text in to_submit:
-        if voc_id in submitted:
-            preview = note_text.replace("\n", " / ")[:50]
-            print(f"  {spelling} | {note_type} | {preview}")
-            count += 1
-            if count >= 8:
-                break
+    if submitted_notes:
+        print("\n助记样本（前 5 条）：")
+        count = 0
+        for voc_id, spelling, note_type, note_text in notes_to_submit:
+            if voc_id in submitted_notes:
+                preview = note_text.replace("\n", " / ")[:50]
+                print(f"  {spelling} | {note_type} | {preview}")
+                count += 1
+                if count >= 5:
+                    break
+    if submitted_phrases:
+        print("\n例句样本（前 5 条）：")
+        count = 0
+        for voc_id, spelling, phrase_en, phrase_zh in phrases_to_submit:
+            if voc_id in submitted_phrases:
+                preview_en = phrase_en.replace("\n", " ")[:40]
+                preview_zh = phrase_zh.replace("\n", " ")[:30]
+                print(f"  {spelling} | {preview_en} | {preview_zh}")
+                count += 1
+                if count >= 5:
+                    break
 
 
-def _git_push(gh_token, new_count, date_str):
+def _git_push(gh_token, note_count, phrase_count, date_str):
+    parts = []
+    if note_count:
+        parts.append(f"{note_count} notes")
+    if phrase_count:
+        parts.append(f"{phrase_count} phrases")
+    summary = " + ".join(parts) if parts else "no changes"
+
     cmds = [
         ["git", "-C", REPO_DIR, "config", "user.email", "routine@claude.ai"],
         ["git", "-C", REPO_DIR, "config", "user.name", "Claude Routine"],
@@ -355,7 +485,7 @@ def _git_push(gh_token, new_count, date_str):
                      f"https://x-access-token:{gh_token}@github.com/Kemou2333/maimemo-mnemonic-bot.git"])
     cmds += [
         ["git", "-C", REPO_DIR, "add", "processed.json"],
-        ["git", "-C", REPO_DIR, "commit", "-m", f"chore: {new_count} new mnemonics {date_str}"],
+        ["git", "-C", REPO_DIR, "commit", "-m", f"chore: {summary} {date_str}"],
         ["git", "-C", REPO_DIR, "push", "origin", "HEAD:main"],
     ]
     for cmd in cmds:
