@@ -313,13 +313,18 @@ Claude Code Routines 会创建 `claude/xxx-yyy-zzz` 这种 feature 分支。
 
 #### 待处理判定
 
-`--fetch` 列出的"待处理"是任意一项还缺的词：`note_date` 缺 → 列入 ALL_NOTES 模板，
-`phrase_date` 缺 → 列入 ALL_PHRASES 模板。两个都缺则两块都出现。
+`--fetch` 列出的"待处理"跟原来助记的逻辑完全一致：以今日剩余 + 明日待处理的词为
+底盘，**`voc_id` 在 processed.json 里就跳过**，剩下的就是这次要做的新词。
+`ALL_NOTES` 和 `ALL_PHRASES` 列出的永远是**同一批新词**——每个新词同时生成助记
+和例句。
 
-副作用：所有 1500+ 老词当前都只有 note_date 没有 phrase_date，将来出现在今日/明日
-复习队列里时会自动被标记成"待补例句"。这是预期行为，例句通过日常复习自然回填，
-不需要单独的 backfill 模式（也是当时设计取舍的结果——避免一次性补几百条例句把
-Routine 撑爆，也避免 API 在短时间内被打满）。
+老词（已经在 processed.json 里）不补例句。理由：例句是给"第一次见到这个词"的时刻
+配套的，老词早就背了几轮，回头补例句性价比低；同时也避免每天 Routine 因为复习
+队列里塞了大量老词导致生成量爆炸、API 配额吃紧。老词补例句的需求未来可以通过
+单独的 `--backfill-phrases N` 模式实现。
+
+`processed.json` 的 `note_date` 和 `phrase_date` 双字段保留下来，是为了**事后能
+看出哪天写的哪条**（信息记录），但不参与"是否待处理"的判定。
 
 #### 风格规则
 

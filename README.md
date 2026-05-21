@@ -35,8 +35,8 @@
 
 1. 每天晚上 9 点，Claude Code Routine 自动触发
 2. 脚本从墨墨 API 拉取**今日剩余 + 明日安排**的单词列表
-3. 对照 `processed.json`，分别筛出"缺助记"和"缺例句"的词
-4. Claude 为缺助记的词生成助记，为缺例句的词生成 1~3 条例句
+3. 对照 `processed.json` 过滤掉已处理的词，剩下就是这次要做的新词
+4. Claude 为每个新词同时生成 1~N 条助记 + 1~3 条例句
 5. 通过墨墨开放 API 分别写入 `/notes` 和 `/phrases`
 6. 更新 `processed.json` 并推回 main 分支
 7. GitHub Actions 监测到更新，自动重新生成进度图
@@ -63,7 +63,7 @@
 ## 脚本用法
 
 ```bash
-python3 run_mnemonics.py --fetch         # 拉今日+明日待处理词（分别列出缺助记/缺例句）
+python3 run_mnemonics.py --fetch         # 拉今日+明日待处理词（ALL_NOTES + ALL_PHRASES 同批）
 python3 run_mnemonics.py --backfill 100  # 拉 N 个缺助记的老词（仅助记，批量回填）
 python3 run_mnemonics.py                 # 提交 ALL_NOTES + ALL_PHRASES
 ```

@@ -237,34 +237,31 @@ def cmd_fetch():
             seen_ids.add(item["voc_id"])
             combined.append(item)
 
-    note_pending   = [i for i in combined if needs_note(done_map.get(i["voc_id"]))]
-    phrase_pending = [i for i in combined if needs_phrase(done_map.get(i["voc_id"]))]
-    both_done      = len(combined) - len({i["voc_id"] for i in note_pending + phrase_pending})
+    # 跟原来助记的逻辑完全一致：voc_id 在 processed.json 就跳过
+    pending = [i for i in combined if i["voc_id"] not in done_map]
+    already_done = len(combined) - len(pending)
 
     print(f"今日剩余：{len(today_items)} 词")
     print(f"明日安排：{len(tomorrow_items)} 词")
-    print(f"合并去重：{len(combined)} 词  |  全部完成：{both_done}")
-    print(f"  缺助记：{len(note_pending)} 词  |  缺例句：{len(phrase_pending)} 词\n")
+    print(f"合并去重：{len(combined)} 词  |  已处理：{already_done}  |  待处理：{len(pending)}\n")
 
-    if not note_pending and not phrase_pending:
+    if not pending:
         print("本次无新增，所有词均已处理。")
         return
 
     print('全部 note_text / phrase_en / phrase_zh 必须用三引号 """..."""\n')
 
-    if note_pending:
-        print("─── ALL_NOTES（待生成助记）───\n")
-        for item in note_pending:
-            print(f'    # {item["voc_spelling"]}')
-            print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", """note_text"""),')
-            print()
+    print("─── ALL_NOTES（每词 1~N 条助记）───\n")
+    for item in pending:
+        print(f'    # {item["voc_spelling"]}')
+        print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", """note_text"""),')
+        print()
 
-    if phrase_pending:
-        print("─── ALL_PHRASES（待生成例句，每词 1~3 条，多义词覆盖不同义项）───\n")
-        for item in phrase_pending:
-            print(f'    # {item["voc_spelling"]}')
-            print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", """phrase_en""", """phrase_zh"""),')
-            print()
+    print("─── ALL_PHRASES（每词 1~3 条例句，多义词覆盖不同义项）───\n")
+    for item in pending:
+        print(f'    # {item["voc_spelling"]}')
+        print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", """phrase_en""", """phrase_zh"""),')
+        print()
 
 
 def cmd_backfill():
