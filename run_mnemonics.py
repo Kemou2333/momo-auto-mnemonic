@@ -2,12 +2,16 @@
 """
 墨墨助记自动提交脚本
 
-用法：
-  python3 run_mnemonics.py --fetch    # 拉取今日+明日待处理词
-  python3 run_mnemonics.py            # 正式提交（ALL_NOTES 已填好时）
+三种用法：
+  python3 run_mnemonics.py --fetch          # 拉取今日+明日待处理词（日常）
+  python3 run_mnemonics.py --backfill 100   # 拉取 N 个老词（批量回填用）
+  python3 run_mnemonics.py                  # 正式提交（ALL_NOTES 已填好时）
 
 设计：晚上 9 点跑一次，拉取明天的词单 + 今天还没处理的剩余词，
 查重后批量生成助记，第二天早晨打开 App 就已经全部就绪。
+
+批量回填：如果想给以前学过但没助记的老词补上助记，用 --backfill N。
+建议每次 50-100 个，避免单次 Routine 跑太久。
 """
 
 import json
@@ -43,7 +47,6 @@ MAIMEMO_DAY_START_HOUR = 4
 # 换行直接在源码里换行（不要写 \n）。示例：
 #
 #     ("voc-xxx", "nowadays", "合成", """now + a + days（如今这些日子）
-# 一个词把"现在""加上""日子"连起来 → 表示"现今、当今"
 # 强调"和过去对比的此刻"，常和时间状语连用"""),
 #
 # note_type 可选：词根词缀 / 词源 / 合成 / 派生 / 辨析 / 固定搭配 /
@@ -143,6 +146,37 @@ def fetch_by_date(target_date, token):
     return [{"voc_id": r["voc_id"], "voc_spelling": r["voc_spelling"]} for r in records], None
 
 
+def fetch_all_records(token):
+    """拉取学习计划中所有词（用于 backfill）。
+    单次 limit=1000，如果还有就用 offset 继续。"""
+    all_records = []
+    offset = 0
+    while True:
+        ok, result = api_post("/study/query_study_records",
+                              {"limit": 1000, "offset": offset}, token)
+        if not ok:
+            return [], f"拉取学习计划失败：{result}"
+        records = result["data"]["records"]
+        if not records:
+            break
+        all_records.extend(records)
+        if len(records) < 1000:
+            break
+        offset += len(records)
+    return [{"voc_id": r["voc_id"], "voc_spelling": r["voc_spelling"]} for r in all_records], None
+
+
+def parse_n_argument(flag, default):
+    """从 sys.argv 中提取 --flag N 的 N 值"""
+    for i, arg in enumerate(sys.argv):
+        if arg == flag and i + 1 < len(sys.argv):
+            try:
+                return int(sys.argv[i + 1])
+            except ValueError:
+                pass
+    return default
+
+
 def cmd_fetch():
     token = get_token()
     done_map = load_processed()
@@ -179,7 +213,46 @@ def cmd_fetch():
         print("本次无新增，所有词均已处理。")
         return
 
-    print("待处理词（复制填入 ALL_NOTES，note_text 必须用三引号 \"\"\"...\"\"\")：\n")
+    print('待处理词（复制填入 ALL_NOTES，note_text 必须用三引号 """..."""）：\n')
+    for item in pending:
+        print(f'    # {item["voc_spelling"]}')
+        print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", """note_text"""),')
+        print()
+
+
+def cmd_backfill():
+    n = parse_n_argument("--backfill", 100)
+    token = get_token()
+    done_map = load_processed()
+    done_set = set(done_map.keys())
+
+    print(f"批量回填模式：本次拉取最多 {n} 个老词\n")
+
+    all_words, err = fetch_all_records(token)
+    if err:
+        print(err, file=sys.stderr)
+        sys.exit(1)
+
+    # 去重（query_study_records 可能有重复条目）
+    seen = set()
+    unique = []
+    for w in all_words:
+        if w["voc_id"] not in seen:
+            seen.add(w["voc_id"])
+            unique.append(w)
+
+    pending_all = [w for w in unique if w["voc_id"] not in done_set]
+    pending = pending_all[:n]
+
+    print(f"学习计划共 {len(unique)} 词")
+    print(f"已处理 {len(done_set)} 词")
+    print(f"剩余待回填 {len(pending_all)} 词，本次取 {len(pending)} 词\n")
+
+    if not pending:
+        print("没有更多老词需要回填，全部已处理完毕。")
+        return
+
+    print('待处理词（复制填入 ALL_NOTES，note_text 必须用三引号 """..."""）：\n')
     for item in pending:
         print(f'    # {item["voc_spelling"]}')
         print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", """note_text"""),')
@@ -298,7 +371,9 @@ def _git_push(gh_token, new_count, date_str):
 
 
 if __name__ == "__main__":
-    if "--fetch" in sys.argv:
+    if "--backfill" in sys.argv:
+        cmd_backfill()
+    elif "--fetch" in sys.argv:
         cmd_fetch()
     else:
         cmd_submit()
