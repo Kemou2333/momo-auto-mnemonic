@@ -3,17 +3,11 @@
 墨墨助记自动提交脚本
 
 用法：
-  python3 run_mnemonics.py --fetch    # 拉取明日词单（用于晚上预生成）
+  python3 run_mnemonics.py --fetch    # 拉取今日+明日待处理词
   python3 run_mnemonics.py            # 正式提交（ALL_NOTES 已填好时）
 
-设计原则：晚上 9 点跑一次，拉取明天的词单 + 今天还没处理的剩余词，
+设计：晚上 9 点跑一次，拉取明天的词单 + 今天还没处理的剩余词，
 查重后批量生成助记，第二天早晨打开 App 就已经全部就绪。
-
-Claude 每次运行流程：
-  1. python3 run_mnemonics.py --fetch  → 查看待处理词
-  2. 按 MNEMONIC_RULES.md 生成助记，填入下方 ALL_NOTES
-  3. python3 run_mnemonics.py         → 提交并 push
-     脚本会自动把 processed.json push 到 main，并清空 ALL_NOTES 还原脚本
 """
 
 import json
@@ -42,8 +36,18 @@ MAIMEMO_DAY_START_HOUR = 4
 # ── ▼▼▼ Claude 每次填写这里 ▼▼▼ ──────────────────────────────────────────────
 #
 # 格式：(voc_id, spelling, note_type, note_text)
-# note_type: 词根词缀 / 词源 / 合成 / 派生 / 辨析 / 固定搭配 / 近反义词 / 串记 / 扩展 / 语法 / 其他
-# note_text: 纯文本，用 \n 换行，60-140 字
+#
+# 【重要】note_text 必须使用 Python 三引号字符串 """..."""
+# 这样内容里有任何符号（包括英文双引号、单引号、反斜杠）都不会和 Python 语法冲突。
+#
+# 换行直接在源码里换行（不要写 \n）。示例：
+#
+#     ("voc-xxx", "nowadays", "合成", """now + a + days（如今这些日子）
+# 一个词把"现在""加上""日子"连起来 → 表示"现今、当今"
+# 强调"和过去对比的此刻"，常和时间状语连用"""),
+#
+# note_type 可选：词根词缀 / 词源 / 合成 / 派生 / 辨析 / 固定搭配 /
+#                近反义词 / 串记 / 扩展 / 语法 / 其他
 
 ALL_NOTES = [
     # (voc_id, spelling, note_type, note_text),
@@ -175,20 +179,17 @@ def cmd_fetch():
         print("本次无新增，所有词均已处理。")
         return
 
-    print("待处理词（复制填入 ALL_NOTES）：\n")
+    print("待处理词（复制填入 ALL_NOTES，note_text 必须用三引号 \"\"\"...\"\"\")：\n")
     for item in pending:
         print(f'    # {item["voc_spelling"]}')
-        print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", "note_text"),')
+        print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", """note_text"""),')
         print()
 
 
 def clear_all_notes_in_script():
-    """Submit 成功后，把脚本里的 ALL_NOTES 恢复成空列表。
-    通过正则匹配 ALL_NOTES = [...] 区块替换。"""
     try:
         with open(SCRIPT_PATH, "r", encoding="utf-8") as f:
             content = f.read()
-        # 匹配从 "ALL_NOTES = [" 到 对应的 "]" 之间的所有内容
         new_content, n = re.subn(
             r"ALL_NOTES = \[.*?\n\]",
             "ALL_NOTES = [\n    # (voc_id, spelling, note_type, note_text),\n]",
@@ -245,7 +246,6 @@ def cmd_submit():
     save_processed(done_map)
     print(f"\nprocessed.json 已更新，共 {len(done_map)} 词")
 
-    # 清空 ALL_NOTES（不会被 commit，因为下面只 add processed.json，但还原状态更干净）
     clear_all_notes_in_script()
 
     push_ok = _git_push(gh_token, len(new_words), date)
@@ -273,7 +273,6 @@ def cmd_submit():
 
 
 def _git_push(gh_token, new_count, date_str):
-    """Push processed.json to main. 使用 HEAD:main 语法可以从任何分支推到 main。"""
     cmds = [
         ["git", "-C", REPO_DIR, "config", "user.email", "routine@claude.ai"],
         ["git", "-C", REPO_DIR, "config", "user.name", "Claude Routine"],
@@ -284,7 +283,6 @@ def _git_push(gh_token, new_count, date_str):
     cmds += [
         ["git", "-C", REPO_DIR, "add", "processed.json"],
         ["git", "-C", REPO_DIR, "commit", "-m", f"chore: {new_count} new mnemonics {date_str}"],
-        # 用 HEAD:main 显式推到 main 分支，即使当前在 feature 分支也能工作
         ["git", "-C", REPO_DIR, "push", "origin", "HEAD:main"],
     ]
     for cmd in cmds:
