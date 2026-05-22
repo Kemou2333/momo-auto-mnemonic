@@ -20,7 +20,9 @@
   <line x1="55.0" y1="235" x2="55.0" y2="239" stroke="#8b949e" stroke-width="1"/>
   <text x="780.0" y="272" fill="#8b949e" font-size="11" text-anchor="middle">05-21</text>
   <line x1="780.0" y1="235" x2="780.0" y2="239" stroke="#8b949e" stroke-width="1"/>
-  <text x="400" y="22" fill="#e6edf3" font-size="14" font-weight="bold" text-anchor="middle">助记累计添加词数（共 77 词）</text>
+  <text x="400" y="22" fill="#e6edf3" font-size="14" font-weight="bold" text-anchor="middle">累计：助记 77 词 · 例句 0 词</text>
+  <rect x="650" y="30" width="10" height="3" fill="#58a6ff"/>
+  <text x="664" y="34" fill="#8b949e" font-size="11">助记</text>
   <line x1="55" y1="40" x2="55" y2="235" stroke="#30363d" stroke-width="1"/>
   <line x1="55" y1="235" x2="780" y2="235" stroke="#30363d" stroke-width="1"/>
 </svg>
