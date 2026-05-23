@@ -14,6 +14,8 @@
       "Bash(python3 run_mnemonics.py --backfill *)",
       "Read",
       "Edit",
+      "Agent",
+      "Task",
       "mcp__github__get_*",
       "mcp__github__list_*",
       "mcp__github__search_*"
@@ -56,6 +58,7 @@
       "mcp__github__merge_pull_request",
       "Write(CLAUDE.md)",
       "Write(MNEMONIC_RULES.md)",
+      "Write(PHRASE_RULES.md)",
       "Write(CONTEXT.md)",
       "Write(README.md)",
       "Write(.claude/settings.json)",

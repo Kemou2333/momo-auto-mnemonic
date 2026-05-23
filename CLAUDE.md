@@ -1,59 +1,45 @@
-# 墨墨助记 + 例句自动生成
+# 墨墨助记自动生成
 
 ## 今晚要做什么
 
-为 Kemou（高三）墨墨账户今日剩余 + 明日要背的**新词**，同时生成助记和例句，写入墨墨。
+为 Kemou（高三）墨墨账户今日剩余 + 明日要背的**新词**生成助记，写入墨墨。
 
-风格规则：
-- 助记 → MNEMONIC_RULES.md
-- 例句 → PHRASE_RULES.md
+环境变量 `MAIMEMO_TOKEN` 和 `GH_TOKEN` 已注入，脚本自动用。
 
-环境变量 `MAIMEMO_TOKEN` 和 `GH_TOKEN` 已注入，脚本会自动用。
+## 三步走
 
-## 四步走
-
-### 1. 读规则
-
-```
-view MNEMONIC_RULES.md
-view PHRASE_RULES.md
-```
-
-### 2. 拉词
+### 1. 拉词
 
 ```
 python3 run_mnemonics.py --fetch
 ```
 
-输出"本次无新增" → 汇报"今晚无新增"并结束。否则继续。
+输出"本次无新增" → 汇报"今晚无新增"并结束。否则记下打印出的待处理词列表，进入第 2 步。
 
-### 3. 填模板
+**主 agent 不要读 MNEMONIC_RULES.md**——规则文件很长，让子 agent 自己读，省主 agent 上下文。
 
-`--fetch` 会打印两块模板（`ALL_NOTES` 和 `ALL_PHRASES`），照着列出的词逐个填进 `run_mnemonics.py` 的同名区块。
+### 2. 派发子 agent 生成助记
 
-- 多义词的例句**顺序必须和助记义项一致**（见 PHRASE_RULES.md "与助记的对应关系"）
-- 同一个 `voc_id` 在 `ALL_PHRASES` 可以出现 1~3 次（多义词），单义词 1 次
-- **所有文本字段（`note_text` / `phrase_en` / `phrase_zh`）必须用 Python 三引号 `"""..."""` 包裹**——不管内容里有没有引号、斜杠都用三引号，换行直接换行，不要写 `\n`
+把第 1 步列出的待处理词**分批**（每批 20~30 个），逐批用 Agent 工具派发给 **Sonnet 子 agent**（`subagent_type: general-purpose`，**别用 Haiku**）。多批可以一条消息里并行多个 Agent 调用。
 
-示例：
+发给每个子 agent 的提示词模板：
 
-```python
-ALL_NOTES = [
-    ("voc-xxx", "hold up", "固定搭配", """核心画面：把东西固定住不让它动
-不让掉 → 支撑
-不让走 → 延误
-不让动 → 抢劫"""),
-]
+```
+为以下单词生成墨墨助记。先 view MNEMONIC_RULES.md 理解风格，
+再按格式输出 Python 元组，不要解释、不要废话，直接输出代码块：
 
-ALL_PHRASES = [
-    # 同一 voc_id 三条，顺序对应助记的 支撑 → 延误 → 抢劫
-    ("voc-xxx", "hold up", """These pillars hold up the roof.""", """这些柱子支撑着屋顶。"""),
-    ("voc-xxx", "hold up", """The flight was held up by bad weather.""", """航班因恶劣天气延误了。"""),
-    ("voc-xxx", "hold up", """Two men held up the bank.""", """两个人抢劫了银行。"""),
-]
+    ("voc-xxx", "spelling", "note_type", """note_text"""),
+    ...
+
+note_text 必须用三引号 """..."""，换行就直接换行不写 \n。
+
+待处理词：
+[贴入这一批的 voc_id + spelling]
 ```
 
-### 4. 提交
+### 3. 合并 + 提交
+
+把所有子 agent 返回的元组拼到 `run_mnemonics.py` 的 `ALL_NOTES = [...]` 里，然后：
 
 ```
 python3 run_mnemonics.py
@@ -61,19 +47,21 @@ python3 run_mnemonics.py
 
 脚本会自动 POST 墨墨 → 更新 processed.json → 推到 main。
 
-- 看到 `Git push: ✓ 成功` → 汇报结果，**任务结束**
+- 看到 `Git push: ✓ 成功` → 简短汇报今晚搞定几个词、几条成功几条失败，**任务结束**
 - 看到 `Git push: ✗ 失败` → 把错误信息原样汇报给用户
 
 ## 硬性禁令
 
-- ❌ 不在脚本之外做任何 git 操作（不 add / commit / push / 切分支 / 创 PR）
+- ❌ **不要创建 PR**（不调 `mcp__github__create_pull_request`、不跑 `gh pr create`，脚本 push 完就完事，创 PR 是浪费 token）
+- ❌ 不在脚本之外做任何 git 操作（不 add / commit / push / 切分支 / 拉远端）
 - ❌ 不用 MCP 工具修改任何文件
-- ❌ 不修改 CLAUDE.md / MNEMONIC_RULES.md / PHRASE_RULES.md / README.md / settings.json / processed.json
+- ❌ 不修改 CLAUDE.md / MNEMONIC_RULES.md / README.md / settings.json / processed.json / run_mnemonics.py 里 `ALL_NOTES` 之外的代码
 - ❌ 不直接调墨墨 API（脚本会处理限速和重试）
-- ❌ 不调外部 LLM API（你直接生成助记和例句）
-- ✅ 只能改 `run_mnemonics.py` 的 `ALL_NOTES` 和 `ALL_PHRASES` 两个区块
+- ❌ 不调外部 LLM API（你自己生成助记）
+- ❌ **不要填 ALL_PHRASES**（例句功能已暂停）
+- ✅ 只能改 `run_mnemonics.py` 的 `ALL_NOTES` 区块
 
-token 无效 / 网络持续失败 → 立即停止并把错误原样告诉用户，不要自己想办法绕。
+token 无效 / 网络持续失败 → 立刻停止并把错误原样告诉用户，不要自己想办法绕。
 
 ## 想了解项目背景
 

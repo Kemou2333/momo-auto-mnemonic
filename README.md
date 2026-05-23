@@ -1,9 +1,9 @@
 # maimemo-mnemonic-bot
 
-每天自动为墨墨背单词中的今日和明日单词生成**助记 + 例句**，并通过墨墨开放 API
-写回账户。由 Claude Code Routines 驱动，每天晚上 9 点运行一次。
+每天自动为墨墨背单词中的今日和明日单词生成**助记**，并通过墨墨开放 API
+写回账户。由 Claude Code Routines 驱动，每天凌晨 4 点运行一次。
 
-## Kemou的助记＋例句添加进度
+## Kemou 的助记添加进度
 
 ![累计进度图](./chart.svg)
 
@@ -25,31 +25,25 @@
 
 详细的风格指南见 [MNEMONIC_RULES.md](./MNEMONIC_RULES.md)。
 
-## 例句
-
-除了助记，每个词还会自动生成 1~3 条例句（墨墨 App 最多展示 3 条）。多义词的例句
-和助记的义项顺序一一对应，单义词 1 条够了。例句可以是完整句、固定搭配或动词短语。
-原则上**短、准、典型**——背词只看几秒，例句必须一眼扫完。例如 *hold up* 配三条
-对应助记里的三个义项：
-
-> These pillars hold up the roof. 这些柱子支撑着屋顶。
-> The flight was held up by bad weather. 航班因恶劣天气延误了。
-> Two men held up the bank. 两个人抢劫了银行。
-
-详细风格指南见 [PHRASE_RULES.md](./PHRASE_RULES.md)。
-
 ## 工作原理
 
-1. 每天晚上 9 点，Claude Code Routine 自动触发
+1. 每天凌晨 4 点，Claude Code Routine 自动触发
 2. 脚本从墨墨 API 拉取**今日剩余 + 明日安排**的单词列表
 3. 对照 `processed.json` 过滤掉已处理的词，剩下就是这次要做的新词
-4. Claude 为每个新词同时生成 1~N 条助记 + 1~3 条例句
-5. 通过墨墨开放 API 分别写入 `/notes` 和 `/phrases`
+4. 主 agent 把这些词分批派发给 Sonnet 子 agent，子 agent 读 MNEMONIC_RULES.md 后写助记
+5. 通过墨墨开放 API 写入 `/notes`
 6. 更新 `processed.json` 并推回 main 分支
 7. GitHub Actions 监测到更新，自动重新生成进度图
 
-> 为什么选晚上：墨墨学习日以凌晨 4:00 为分界，但 App 在用户首次打开前不会
-> 生成当日词单。晚上 9 点用户已背完今天的词，明天的词单也已确定，最稳。
+> 为什么选 4 点：墨墨学习日以凌晨 4:00 为分界，刚过这个点新一天词单就稳定了；
+> 而且 Claude 5 小时使用额度也刚好在早晨醒来前回血，不耽误日间使用。
+
+## 关于例句
+
+项目早期尝试过同时自动生成例句（POST `/phrases`），但墨墨开放 API 不返回
+词义高亮区间，App 端的体验不如官方例句直观，最终决定**暂停**这部分功能。
+代码（`ALL_PHRASES`、提交逻辑、`PHRASE_RULES.md`）仍保留在仓库里，
+未来如果墨墨开放 API 补上高亮能力，可以快速恢复。
 
 ## 文件结构
 
@@ -57,7 +51,7 @@
 .
 ├── CLAUDE.md              # Routine 每次读的执行流程
 ├── MNEMONIC_RULES.md      # 助记风格规则
-├── PHRASE_RULES.md        # 例句风格规则
+├── PHRASE_RULES.md        # 例句风格规则（暂停使用）
 ├── CONTEXT.md             # 给新 AI / 维护者的设计上下文
 ├── run_mnemonics.py       # 主脚本（拉词/提交/推送）
 ├── processed.json         # 已处理单词的查重记录
@@ -70,9 +64,9 @@
 ## 脚本用法
 
 ```bash
-python3 run_mnemonics.py --fetch         # 拉今日+明日待处理词（ALL_NOTES + ALL_PHRASES 同批）
-python3 run_mnemonics.py --backfill 100  # 拉 N 个缺助记的老词（仅助记，批量回填）
-python3 run_mnemonics.py                 # 提交 ALL_NOTES + ALL_PHRASES
+python3 run_mnemonics.py --fetch         # 拉今日+明日待处理词
+python3 run_mnemonics.py --backfill 100  # 拉 N 个缺助记的老词（批量回填）
+python3 run_mnemonics.py                 # 提交 ALL_NOTES
 ```
 
 需要环境变量 `MAIMEMO_TOKEN` 和 `GH_TOKEN`。

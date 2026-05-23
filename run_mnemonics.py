@@ -40,23 +40,19 @@ MAIMEMO_DAY_START_HOUR = 4
 # ── ▼▼▼ Claude 每次填写这里 ▼▼▼ ──────────────────────────────────────────────
 #
 # 助记格式：(voc_id, spelling, note_type, note_text)
-# 例句格式：(voc_id, spelling, phrase_en, phrase_zh)
-#   - 同一个 voc_id 可以在 ALL_PHRASES 出现 1~3 次（多义词覆盖不同义项）
-#   - 单义词写 1 条即可，不要硬凑
 #
-# 【重要】所有文本字段必须使用 Python 三引号字符串 """..."""
-# 这样内容里有任何符号（包括英文双引号、单引号、反斜杠）都不会和 Python 语法冲突。
-#
+# 【重要】note_text 必须使用 Python 三引号字符串 """..."""
+# 这样内容里有任何符号（双引号、单引号、反斜杠）都不会和 Python 语法冲突。
 # 换行直接在源码里换行（不要写 \n）。示例：
 #
 #     ("voc-xxx", "nowadays", "合成", """now + a + days（如今这些日子）
 # 强调"和过去对比的此刻"，常和时间状语连用"""),
 #
-#     ("voc-xxx", "nowadays", """Nowadays, most people shop online.""",
-#                              """如今，大多数人都在网上购物。"""),
-#
 # note_type 可选：词根词缀 / 词源 / 合成 / 派生 / 辨析 / 固定搭配 /
 #                近反义词 / 串记 / 扩展 / 语法 / 其他
+#
+# ALL_PHRASES 例句功能目前暂停（墨墨 API 不支持词义高亮，App 体验不佳），
+# 保留代码以便未来恢复。Routine 跑的时候不要填这个。
 
 ALL_NOTES = [
     # (voc_id, spelling, note_type, note_text),
@@ -249,18 +245,12 @@ def cmd_fetch():
         print("本次无新增，所有词均已处理。")
         return
 
-    print('全部 note_text / phrase_en / phrase_zh 必须用三引号 """..."""\n')
+    print('全部 note_text 必须用三引号 """..."""\n')
 
     print("─── ALL_NOTES（每词 1~N 条助记）───\n")
     for item in pending:
         print(f'    # {item["voc_spelling"]}')
         print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", """note_text"""),')
-        print()
-
-    print("─── ALL_PHRASES（每词 1~3 条例句，多义词覆盖不同义项）───\n")
-    for item in pending:
-        print(f'    # {item["voc_spelling"]}')
-        print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", """phrase_en""", """phrase_zh"""),')
         print()
 
 
@@ -401,7 +391,6 @@ def cmd_submit():
                 "phrase": phrase_en,
                 "interpretation": phrase_zh,
                 "tags": [],
-                "origin": "AI 生成",
             }
         }, token)
         if ok:

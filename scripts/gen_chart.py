@@ -135,7 +135,10 @@ def render_svg(dates, notes_cum, phrases_cum, total_notes, total_phrases):
                      f'y2="{MT+ph+4}" stroke="#8b949e" stroke-width="1"/>')
 
     # Title
-    title = f'累计：助记 {total_notes} 词 · 例句 {total_phrases} 词'
+    if total_phrases > 0:
+        title = f'累计：助记 {total_notes} 词 · 例句 {total_phrases} 词'
+    else:
+        title = f'累计：助记 {total_notes} 词'
     lines.append(f'<text x="{W//2}" y="22" fill="#e6edf3" '
                  f'font-size="14" font-weight="bold" text-anchor="middle">'
                  f'{title}</text>')
