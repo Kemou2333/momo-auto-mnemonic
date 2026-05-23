@@ -71,6 +71,20 @@ python3 run_mnemonics.py                 # 提交 ALL_NOTES
 
 需要环境变量 `MAIMEMO_TOKEN` 和 `GH_TOKEN`。
 
+## Routine 触发提示词
+
+每天 Routine 启动时发给主 Claude 的初始 prompt（贴到 Claude Code Web 后台
+Routine 配置里）：
+
+```
+开始今日的任务，按 CLAUDE.md 走。
+
+补充：用户 Kemou 是高三生 + 编程小白，汇报别堆技术细节，结果说清楚就行。
+```
+
+具体执行流程、子 agent 派发规则、硬性禁令都写在 `CLAUDE.md` 里，主 Claude
+启动时会自动读取，无需在 prompt 里重复。
+
 ## 缘起
 
 有时候问 AI 单词意思，会得到很有启发的解释——比如聊到 *hold up* 才发现
