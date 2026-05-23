@@ -1,4 +1,5 @@
-# 摸摸造助记 · momo-auto-mnemonic
+# momo-auto-mnemonic
+# 摸摸造助记
 
 > 名字 neta 自「墨墨背单词」——摸摸（动词，慢慢摸索）造助记。
 
