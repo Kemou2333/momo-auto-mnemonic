@@ -14,22 +14,17 @@
   <text x="49" y="44.0" fill="#8b949e" font-size="11" text-anchor="end">149</text>
   <polygon points="55.0,235 55.0,221.9 417.5,134.2 780.0,40.0 780.0,235" fill="#1f6feb" opacity="0.15"/>
   <polyline points="55.0,221.9 417.5,134.2 780.0,40.0" fill="none" stroke="#58a6ff" stroke-width="2" stroke-linejoin="round"/>
-  <polyline points="55.0,235.0 417.5,235.0 780.0,140.8" fill="none" stroke="#bc8cff" stroke-width="2" stroke-linejoin="round"/>
   <circle cx="55.0" cy="221.9" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
   <circle cx="780.0" cy="40.0" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
-  <circle cx="55.0" cy="235.0" r="4" fill="#bc8cff" stroke="#0d1117" stroke-width="2"/>
-  <circle cx="780.0" cy="140.8" r="4" fill="#bc8cff" stroke="#0d1117" stroke-width="2"/>
   <text x="55.0" y="272" fill="#8b949e" font-size="11" text-anchor="middle">05-20</text>
   <line x1="55.0" y1="235" x2="55.0" y2="239" stroke="#8b949e" stroke-width="1"/>
   <text x="417.5" y="272" fill="#8b949e" font-size="11" text-anchor="middle">05-21</text>
   <line x1="417.5" y1="235" x2="417.5" y2="239" stroke="#8b949e" stroke-width="1"/>
   <text x="780.0" y="272" fill="#8b949e" font-size="11" text-anchor="middle">05-23</text>
   <line x1="780.0" y1="235" x2="780.0" y2="239" stroke="#8b949e" stroke-width="1"/>
-  <text x="400" y="22" fill="#e6edf3" font-size="14" font-weight="bold" text-anchor="middle">累计：助记 149 词 · 例句 72 词</text>
+  <text x="400" y="22" fill="#e6edf3" font-size="14" font-weight="bold" text-anchor="middle">累计：助记 149 词</text>
   <rect x="650" y="30" width="10" height="3" fill="#58a6ff"/>
   <text x="664" y="34" fill="#8b949e" font-size="11">助记</text>
-  <rect x="705" y="30" width="10" height="3" fill="#bc8cff"/>
-  <text x="719" y="34" fill="#8b949e" font-size="11">例句</text>
   <line x1="55" y1="40" x2="55" y2="235" stroke="#30363d" stroke-width="1"/>
   <line x1="55" y1="235" x2="780" y2="235" stroke="#30363d" stroke-width="1"/>
 </svg>
