@@ -1,4 +1,6 @@
-# maimemo-mnemonic-bot
+# 摸摸造助记 · momo-auto-mnemonic
+
+> 名字 neta 自「墨墨背单词」——摸摸（动词，慢慢摸索）造助记。
 
 每天自动为墨墨背单词中的今日和明日单词生成**助记**，并通过墨墨开放 API
 写回账户。由 Claude Code Routines 驱动，每天凌晨 4 点运行一次。

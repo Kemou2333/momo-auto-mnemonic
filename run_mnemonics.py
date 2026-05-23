@@ -468,7 +468,7 @@ def _git_push(gh_token, note_count, phrase_count, date_str):
     ]
     if gh_token:
         cmds.append(["git", "-C", REPO_DIR, "remote", "set-url", "origin",
-                     f"https://x-access-token:{gh_token}@github.com/Kemou2333/maimemo-mnemonic-bot.git"])
+                     f"https://x-access-token:{gh_token}@github.com/Kemou2333/momo-auto-mnemonic.git"])
     cmds += [
         ["git", "-C", REPO_DIR, "add", "processed.json"],
         ["git", "-C", REPO_DIR, "commit", "-m", f"chore: {summary} {date_str}"],
