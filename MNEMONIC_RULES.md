@@ -66,6 +66,17 @@ historic vs historical
 historic：有历史意义的（a historic moment）
 historical：与历史有关的（historical research）
 
+### 简单同义词：直接等号标出
+
+如果一个词有更常见的同义词，直接写等号或约等号，不要硬凑解释。
+
+完全相等：squarely = straight（就是"直接、正面地"的意思）
+近似相等：solemn ≈ serious（但 solemn 更庄严肃穆，带仪式感）
+有区别时顺带辨析：weary ≈ tired，但 weary 强调长期积累的疲惫厌倦感
+
+适用场景：单词本义直接对应一个更高频的词，记住那个词就够了。
+不适用：两个词各有侧重，辨析才是重点——这时用近义辨析方式写，别偷懒。
+
 ### 短语/固定搭配：拆字面意思
 
 anything but
