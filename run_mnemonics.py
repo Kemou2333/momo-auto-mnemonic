@@ -149,11 +149,22 @@ def api_post(path, body, token):
                 return True, json.loads(resp.read())
         except urllib.error.HTTPError as e:
             err = e.read().decode("utf-8", errors="replace")
+            last = attempt + 1 >= MAX_RETRIES
             if e.code == 429:
                 print(f"    ⏳ 限速 429，等待 {RETRY_WAIT}s（第 {attempt+1}/{MAX_RETRIES} 次）...")
                 time.sleep(RETRY_WAIT)
+            elif e.code in (500, 502, 503, 504) and not last:
+                wait = 5 * (2 ** attempt)  # 5s, 10s, 20s...
+                print(f"    ⏳ 服务端 {e.code}，等待 {wait}s 重试（第 {attempt+1}/{MAX_RETRIES} 次）...")
+                time.sleep(wait)
             else:
                 return False, f"HTTP {e.code}: {err[:200]}"
+        except urllib.error.URLError as e:
+            if attempt + 1 >= MAX_RETRIES:
+                return False, str(e)
+            wait = 5 * (2 ** attempt)
+            print(f"    ⏳ 网络错误（{e.reason}），等待 {wait}s 重试（第 {attempt+1}/{MAX_RETRIES} 次）...")
+            time.sleep(wait)
         except Exception as ex:
             return False, str(ex)
     return False, f"已达最大重试次数（{MAX_RETRIES}）"
