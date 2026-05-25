@@ -14,8 +14,6 @@
       "Bash(python3 run_mnemonics.py --backfill *)",
       "Read",
       "Edit",
-      "Agent",
-      "Task",
       "mcp__github__get_*",
       "mcp__github__list_*",
       "mcp__github__search_*"
