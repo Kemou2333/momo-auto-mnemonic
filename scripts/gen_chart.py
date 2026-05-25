@@ -104,15 +104,15 @@ def render_svg(dates, notes_cum, phrases_cum, notes_per_day,
     lines = []
 
     # Background
-    lines.append(f'<rect width="{W}" height="{H}" fill="#0d1117"/>')
+    lines.append(f'<rect width="{W}" height="{H}" fill="#ffffff"/>')
 
     # Grid lines (horizontal)
     for k in range(y_ticks + 1):
         yv = max_c * k / y_ticks
         y  = py(yv)
         lines.append(f'<line x1="{ML}" y1="{y:.1f}" x2="{ML+pw}" y2="{y:.1f}" '
-                     f'stroke="#21262d" stroke-width="1"/>')
-        lines.append(f'<text x="{ML-6}" y="{y+4:.1f}" fill="#8b949e" '
+                     f'stroke="#eaeef2" stroke-width="1"/>')
+        lines.append(f'<text x="{ML-6}" y="{y+4:.1f}" fill="#57606a" '
                      f'font-size="11" text-anchor="end">{int(yv)}</text>')
 
     # 每日新增：灰蓝色柱状（画在折线下层，用右侧坐标轴）
@@ -125,72 +125,75 @@ def render_svg(dates, notes_cum, phrases_cum, notes_per_day,
         by = py_bar(v)
         bh = base_y - by
         lines.append(f'<rect x="{bx:.1f}" y="{by:.1f}" width="{bar_w:.1f}" '
-                     f'height="{bh:.1f}" fill="#388bfd" opacity="0.35" rx="2"/>')
-        lines.append(f'<text x="{px(i):.1f}" y="{by-4:.1f}" fill="#8b949e" '
+                     f'height="{bh:.1f}" fill="#0969da" opacity="0.35" rx="2"/>')
+        lines.append(f'<text x="{px(i):.1f}" y="{by-4:.1f}" fill="#57606a" '
                      f'font-size="10" text-anchor="middle">{v}</text>')
 
     # 助记：蓝色填充 + 实线
-    lines.append(f'<polygon points="{notes_fill}" fill="#1f6feb" opacity="0.15"/>')
+    lines.append(f'<polygon points="{notes_fill}" fill="#0969da" opacity="0.15"/>')
     lines.append(f'<polyline points="{notes_pts}" fill="none" '
-                 f'stroke="#58a6ff" stroke-width="2" stroke-linejoin="round"/>')
+                 f'stroke="#0969da" stroke-width="2" stroke-linejoin="round"/>')
 
     # 例句：紫色实线（只在有数据时画）
     if total_phrases > 0:
         lines.append(f'<polyline points="{phrases_pts}" fill="none" '
-                     f'stroke="#bc8cff" stroke-width="2" stroke-linejoin="round"/>')
+                     f'stroke="#8250df" stroke-width="2" stroke-linejoin="round"/>')
 
     # Dots at first and last for both series
-    for series, color in [(notes_cum, "#58a6ff"), (phrases_cum, "#bc8cff")]:
+    for series, color in [(notes_cum, "#0969da"), (phrases_cum, "#8250df")]:
         if max(series, default=0) == 0:
             continue
         for idx in [0, n - 1]:
             cx, cy = px(idx), py(series[idx])
             lines.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="4" '
-                         f'fill="{color}" stroke="#0d1117" stroke-width="2"/>')
+                         f'fill="{color}" stroke="#ffffff" stroke-width="2"/>')
 
     # 右侧坐标轴刻度（每日新增）
     for k in range(y_ticks + 1):
         dv = max_d * k / y_ticks
         y  = py_bar(dv)
-        lines.append(f'<text x="{ML+pw+6}" y="{y+4:.1f}" fill="#8b949e" '
+        lines.append(f'<text x="{ML+pw+6}" y="{y+4:.1f}" fill="#57606a" '
                      f'font-size="11" text-anchor="start">{int(dv)}</text>')
 
     # X-axis labels
     for idx, label in x_labels:
         x = px(idx)
-        lines.append(f'<text x="{x:.1f}" y="{H-8}" fill="#8b949e" '
+        lines.append(f'<text x="{x:.1f}" y="{H-8}" fill="#57606a" '
                      f'font-size="11" text-anchor="middle">{label}</text>')
         lines.append(f'<line x1="{x:.1f}" y1="{MT+ph}" x2="{x:.1f}" '
-                     f'y2="{MT+ph+4}" stroke="#8b949e" stroke-width="1"/>')
+                     f'y2="{MT+ph+4}" stroke="#57606a" stroke-width="1"/>')
 
     # Title
     if total_phrases > 0:
         title = f'累计：助记 {total_notes} 词 · 例句 {total_phrases} 词'
     else:
         title = f'累计：助记 {total_notes} 词'
-    lines.append(f'<text x="{W//2}" y="22" fill="#e6edf3" '
+    lines.append(f'<text x="{W//2}" y="22" fill="#1f2328" '
                  f'font-size="14" font-weight="bold" text-anchor="middle">'
                  f'{title}</text>')
 
     # Legend (top-right)
     lx = W - MR - 200
-    lines.append(f'<rect x="{lx}" y="30" width="10" height="3" fill="#58a6ff"/>')
-    lines.append(f'<text x="{lx+14}" y="34" fill="#8b949e" font-size="11">累计助记</text>')
-    lines.append(f'<rect x="{lx+72}" y="28" width="9" height="7" fill="#388bfd" opacity="0.5"/>')
-    lines.append(f'<text x="{lx+85}" y="34" fill="#8b949e" font-size="11">每日新增</text>')
+    lines.append(f'<rect x="{lx}" y="30" width="10" height="3" fill="#0969da"/>')
+    lines.append(f'<text x="{lx+14}" y="34" fill="#57606a" font-size="11">累计助记</text>')
+    lines.append(f'<rect x="{lx+72}" y="28" width="9" height="7" fill="#0969da" opacity="0.5"/>')
+    lines.append(f'<text x="{lx+85}" y="34" fill="#57606a" font-size="11">每日新增</text>')
     if total_phrases > 0:
-        lines.append(f'<rect x="{lx+148}" y="30" width="10" height="3" fill="#bc8cff"/>')
-        lines.append(f'<text x="{lx+162}" y="34" fill="#8b949e" font-size="11">例句</text>')
+        lines.append(f'<rect x="{lx+148}" y="30" width="10" height="3" fill="#8250df"/>')
+        lines.append(f'<text x="{lx+162}" y="34" fill="#57606a" font-size="11">例句</text>')
 
     # Axes
     lines.append(f'<line x1="{ML}" y1="{MT}" x2="{ML}" y2="{MT+ph}" '
-                 f'stroke="#30363d" stroke-width="1"/>')
+                 f'stroke="#d0d7de" stroke-width="1"/>')
     lines.append(f'<line x1="{ML}" y1="{MT+ph}" x2="{ML+pw}" y2="{MT+ph}" '
-                 f'stroke="#30363d" stroke-width="1"/>')
+                 f'stroke="#d0d7de" stroke-width="1"/>')
 
+    font = ("-apple-system, BlinkMacSystemFont, 'Segoe UI', "
+            "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', "
+            "'Noto Sans CJK SC', sans-serif")
     inner = "\n  ".join(lines)
     return (f'<svg width="{W}" height="{H}" xmlns="http://www.w3.org/2000/svg" '
-            f'viewBox="0 0 {W} {H}">\n  {inner}\n</svg>\n')
+            f'viewBox="0 0 {W} {H}" font-family="{font}">\n  {inner}\n</svg>\n')
 
 
 if __name__ == "__main__":
