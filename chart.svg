@@ -3,26 +3,28 @@
   <line x1="55" y1="235.0" x2="780" y2="235.0" stroke="#21262d" stroke-width="1"/>
   <text x="49" y="239.0" fill="#8b949e" font-size="11" text-anchor="end">0</text>
   <line x1="55" y1="196.0" x2="780" y2="196.0" stroke="#21262d" stroke-width="1"/>
-  <text x="49" y="200.0" fill="#8b949e" font-size="11" text-anchor="end">29</text>
+  <text x="49" y="200.0" fill="#8b949e" font-size="11" text-anchor="end">44</text>
   <line x1="55" y1="157.0" x2="780" y2="157.0" stroke="#21262d" stroke-width="1"/>
-  <text x="49" y="161.0" fill="#8b949e" font-size="11" text-anchor="end">59</text>
+  <text x="49" y="161.0" fill="#8b949e" font-size="11" text-anchor="end">89</text>
   <line x1="55" y1="118.0" x2="780" y2="118.0" stroke="#21262d" stroke-width="1"/>
-  <text x="49" y="122.0" fill="#8b949e" font-size="11" text-anchor="end">89</text>
+  <text x="49" y="122.0" fill="#8b949e" font-size="11" text-anchor="end">133</text>
   <line x1="55" y1="79.0" x2="780" y2="79.0" stroke="#21262d" stroke-width="1"/>
-  <text x="49" y="83.0" fill="#8b949e" font-size="11" text-anchor="end">119</text>
+  <text x="49" y="83.0" fill="#8b949e" font-size="11" text-anchor="end">178</text>
   <line x1="55" y1="40.0" x2="780" y2="40.0" stroke="#21262d" stroke-width="1"/>
-  <text x="49" y="44.0" fill="#8b949e" font-size="11" text-anchor="end">149</text>
-  <polygon points="55.0,235 55.0,221.9 417.5,134.2 780.0,40.0 780.0,235" fill="#1f6feb" opacity="0.15"/>
-  <polyline points="55.0,221.9 417.5,134.2 780.0,40.0" fill="none" stroke="#58a6ff" stroke-width="2" stroke-linejoin="round"/>
-  <circle cx="55.0" cy="221.9" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
+  <text x="49" y="44.0" fill="#8b949e" font-size="11" text-anchor="end">223</text>
+  <polygon points="55.0,235 55.0,226.3 296.7,167.7 538.3,104.7 780.0,40.0 780.0,235" fill="#1f6feb" opacity="0.15"/>
+  <polyline points="55.0,226.3 296.7,167.7 538.3,104.7 780.0,40.0" fill="none" stroke="#58a6ff" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="55.0" cy="226.3" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
   <circle cx="780.0" cy="40.0" r="4" fill="#58a6ff" stroke="#0d1117" stroke-width="2"/>
   <text x="55.0" y="272" fill="#8b949e" font-size="11" text-anchor="middle">05-20</text>
   <line x1="55.0" y1="235" x2="55.0" y2="239" stroke="#8b949e" stroke-width="1"/>
-  <text x="417.5" y="272" fill="#8b949e" font-size="11" text-anchor="middle">05-21</text>
-  <line x1="417.5" y1="235" x2="417.5" y2="239" stroke="#8b949e" stroke-width="1"/>
-  <text x="780.0" y="272" fill="#8b949e" font-size="11" text-anchor="middle">05-23</text>
+  <text x="296.7" y="272" fill="#8b949e" font-size="11" text-anchor="middle">05-21</text>
+  <line x1="296.7" y1="235" x2="296.7" y2="239" stroke="#8b949e" stroke-width="1"/>
+  <text x="538.3" y="272" fill="#8b949e" font-size="11" text-anchor="middle">05-23</text>
+  <line x1="538.3" y1="235" x2="538.3" y2="239" stroke="#8b949e" stroke-width="1"/>
+  <text x="780.0" y="272" fill="#8b949e" font-size="11" text-anchor="middle">05-25</text>
   <line x1="780.0" y1="235" x2="780.0" y2="239" stroke="#8b949e" stroke-width="1"/>
-  <text x="400" y="22" fill="#e6edf3" font-size="14" font-weight="bold" text-anchor="middle">累计：助记 149 词</text>
+  <text x="400" y="22" fill="#e6edf3" font-size="14" font-weight="bold" text-anchor="middle">累计：助记 223 词</text>
   <rect x="650" y="30" width="10" height="3" fill="#58a6ff"/>
   <text x="664" y="34" fill="#8b949e" font-size="11">助记</text>
   <line x1="55" y1="40" x2="55" y2="235" stroke="#30363d" stroke-width="1"/>
