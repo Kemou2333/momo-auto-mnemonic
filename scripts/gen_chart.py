@@ -50,30 +50,38 @@ def main():
     notes_cum   = cumulative_of(notes_daily)
     phrases_cum = cumulative_of(phrases_daily)
 
+    notes_per_day = [notes_daily.get(d, 0) for d in sorted_dates]
+
     total_notes   = notes_cum[-1] if notes_cum else 0
     total_phrases = phrases_cum[-1] if phrases_cum else 0
     print(f"共 {len(sorted_dates)} 天数据，累计助记 {total_notes} 词、例句 {total_phrases} 词")
 
-    svg = render_svg(sorted_dates, notes_cum, phrases_cum, total_notes, total_phrases)
+    svg = render_svg(sorted_dates, notes_cum, phrases_cum,
+                     notes_per_day, total_notes, total_phrases)
     with open(CHART_PATH, "w", encoding="utf-8") as f:
         f.write(svg)
     print(f"chart.svg 已生成")
 
 
-def render_svg(dates, notes_cum, phrases_cum, total_notes, total_phrases):
+def render_svg(dates, notes_cum, phrases_cum, notes_per_day,
+               total_notes, total_phrases):
     W, H = 800, 280
-    ML, MR, MT, MB = 55, 20, 40, 45  # margins
+    ML, MR, MT, MB = 55, 48, 40, 45  # margins（右侧留出每日柱的坐标轴）
     pw = W - ML - MR  # plot width
     ph = H - MT - MB  # plot height
 
     n = len(dates)
     max_c = max(max(notes_cum, default=0), max(phrases_cum, default=0), 1)
+    max_d = max(max(notes_per_day, default=0), 1)  # 每日新增的右轴上限
 
     def px(i):
         return ML + pw * i / max(n - 1, 1)
 
     def py(c):
         return MT + ph * (1 - c / max_c)
+
+    def py_bar(v):  # 每日新增用右侧坐标轴
+        return MT + ph * (1 - v / max_d)
 
     # Axis ticks
     y_ticks = 5
@@ -107,6 +115,20 @@ def render_svg(dates, notes_cum, phrases_cum, total_notes, total_phrases):
         lines.append(f'<text x="{ML-6}" y="{y+4:.1f}" fill="#8b949e" '
                      f'font-size="11" text-anchor="end">{int(yv)}</text>')
 
+    # 每日新增：灰蓝色柱状（画在折线下层，用右侧坐标轴）
+    bar_w = max(4, pw / max(n, 1) * 0.45)
+    base_y = MT + ph
+    for i, v in enumerate(notes_per_day):
+        if v <= 0:
+            continue
+        bx = px(i) - bar_w / 2
+        by = py_bar(v)
+        bh = base_y - by
+        lines.append(f'<rect x="{bx:.1f}" y="{by:.1f}" width="{bar_w:.1f}" '
+                     f'height="{bh:.1f}" fill="#388bfd" opacity="0.35" rx="2"/>')
+        lines.append(f'<text x="{px(i):.1f}" y="{by-4:.1f}" fill="#8b949e" '
+                     f'font-size="10" text-anchor="middle">{v}</text>')
+
     # 助记：蓝色填充 + 实线
     lines.append(f'<polygon points="{notes_fill}" fill="#1f6feb" opacity="0.15"/>')
     lines.append(f'<polyline points="{notes_pts}" fill="none" '
@@ -126,6 +148,13 @@ def render_svg(dates, notes_cum, phrases_cum, total_notes, total_phrases):
             lines.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="4" '
                          f'fill="{color}" stroke="#0d1117" stroke-width="2"/>')
 
+    # 右侧坐标轴刻度（每日新增）
+    for k in range(y_ticks + 1):
+        dv = max_d * k / y_ticks
+        y  = py_bar(dv)
+        lines.append(f'<text x="{ML+pw+6}" y="{y+4:.1f}" fill="#8b949e" '
+                     f'font-size="11" text-anchor="start">{int(dv)}</text>')
+
     # X-axis labels
     for idx, label in x_labels:
         x = px(idx)
@@ -144,12 +173,14 @@ def render_svg(dates, notes_cum, phrases_cum, total_notes, total_phrases):
                  f'{title}</text>')
 
     # Legend (top-right)
-    lx = W - MR - 130
+    lx = W - MR - 200
     lines.append(f'<rect x="{lx}" y="30" width="10" height="3" fill="#58a6ff"/>')
-    lines.append(f'<text x="{lx+14}" y="34" fill="#8b949e" font-size="11">助记</text>')
+    lines.append(f'<text x="{lx+14}" y="34" fill="#8b949e" font-size="11">累计助记</text>')
+    lines.append(f'<rect x="{lx+72}" y="28" width="9" height="7" fill="#388bfd" opacity="0.5"/>')
+    lines.append(f'<text x="{lx+85}" y="34" fill="#8b949e" font-size="11">每日新增</text>')
     if total_phrases > 0:
-        lines.append(f'<rect x="{lx+55}" y="30" width="10" height="3" fill="#bc8cff"/>')
-        lines.append(f'<text x="{lx+69}" y="34" fill="#8b949e" font-size="11">例句</text>')
+        lines.append(f'<rect x="{lx+148}" y="30" width="10" height="3" fill="#bc8cff"/>')
+        lines.append(f'<text x="{lx+162}" y="34" fill="#8b949e" font-size="11">例句</text>')
 
     # Axes
     lines.append(f'<line x1="{ML}" y1="{MT}" x2="{ML}" y2="{MT+ph}" '
