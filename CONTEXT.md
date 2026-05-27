@@ -179,7 +179,7 @@ budge
 | `CLAUDE.md` | Routine 每次运行时 Claude 读的流程指令 | 只能人类改 |
 | `MNEMONIC_RULES.md` | 助记风格规则与 note_type 选择指南（子 agent 读） | 只能人类改 |
 | `PHRASE_RULES.md` | 例句风格规则（**功能已暂停**，文档保留备查） | 只能人类改 |
-| `run_mnemonics.py` | 唯一脚本，负责拉词/提交/推送一条龙 | 只能人类改逻辑，子 agent 只能改 `ALL_NOTES` 区块（通过 Edit 锚点 `]\n\nALL_PHRASES = [`） |
+| `run_mnemonics.py` | 唯一脚本，负责拉词/提交/推送一条龙 | 只能人类改逻辑，Claude 只能改 `ALL_NOTES` 区块 |
 | `processed.json` | 记录所有已处理过的词，查重的唯一依据 | 只能脚本写 |
 | `.claude/settings.json` | 权限配置（哪些 bash 命令允许/拒绝） | 只能人类改 |
 | `scripts/gen_chart.py` | GitHub Actions 用，生成累计词数折线图 | 偶尔改 |

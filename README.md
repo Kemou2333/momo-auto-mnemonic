@@ -31,7 +31,7 @@
 1. 每天凌晨 4 点，Claude Code Routine 自动触发
 2. 脚本从墨墨 API 拉取**今日剩余 + 明日安排**的单词列表
 3. 对照 `processed.json` 过滤掉已处理的词，剩下就是这次要做的新词
-4. 主 agent 把这些词分批派发给 Sonnet 子 agent，子 agent 读 MNEMONIC_RULES.md 后写助记
+4. Claude 读 MNEMONIC_RULES.md 后为每个词生成助记
 5. 通过墨墨开放 API 写入 `/notes`
 6. 更新 `processed.json` 并推回 main 分支
 7. GitHub Actions 监测到更新，自动重新生成进度图
@@ -83,8 +83,7 @@ Routine 配置里）：
 补充：用户 Kemou 是高三生 + 编程小白，汇报别堆技术细节，结果说清楚就行。
 ```
 
-具体执行流程、子 agent 派发规则、硬性禁令都写在 `CLAUDE.md` 里，主 Claude
-启动时会自动读取，无需在 prompt 里重复。
+具体执行流程、硬性禁令都写在 `CLAUDE.md` 里，主 Claude 启动时会自动读取，无需在 prompt 里重复。
 
 ## 缘起
 
