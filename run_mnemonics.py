@@ -2,16 +2,24 @@
 """
 墨墨助记自动提交脚本
 
-三种用法：
-  python3 run_mnemonics.py --fetch          # 拉取今日+明日待处理词（日常）
-  python3 run_mnemonics.py --backfill 100   # 拉取 N 个老词（批量回填用）
-  python3 run_mnemonics.py                  # 正式提交（ALL_NOTES 已填好时）
+四种用法：
+  python3 run_mnemonics.py --fetch              # 拉取今日+明日待处理词（日常模式）
+  python3 run_mnemonics.py --backfill 100       # 拉取 N 个老词（批量回填用）
+  python3 run_mnemonics.py --wordbook FILE      # 词书模式：从词表文件批量预生成助记
+  python3 run_mnemonics.py                       # 正式提交（ALL_NOTES 已填好时）
 
 设计：晚上 9 点跑一次，拉取明天的词单 + 今天还没处理的剩余词，
 查重后批量生成助记，第二天早晨打开 App 就已经全部就绪。
 
 批量回填：如果想给以前学过但没助记的老词补上助记，用 --backfill N。
 建议每次 50-100 个，避免单次 Routine 跑太久。
+
+词书模式（--wordbook）：给一整本词书（尤其云词库，如《有道四级核心 500 词》）
+里的词提前批量生成助记。墨墨开放 API 拉不到官方云词库，所以词表用文本文件给：
+一行一个单词。脚本把每个拼写解析成 voc_id（结果缓存到 .wordbook_cache.json），
+默认只处理"还没选入学习计划"的词（已选词交给日常 routine），按未选优先排序输出。
+词量大时配合 --limit N 分批，详见 WORDBOOK.md。注意：词书模式只在用户明确要求时
+手动运行，日常 Routine 永远跑 --fetch，不要默认进词书模式。
 """
 
 import json
@@ -21,6 +29,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
+import urllib.parse
 import subprocess
 from datetime import datetime, timezone, timedelta
 
@@ -29,6 +38,7 @@ from datetime import datetime, timezone, timedelta
 BASE_URL       = "https://open.maimemo.com/open/api/v1"
 SCRIPT_PATH    = os.path.abspath(__file__)
 PROCESSED_PATH = os.path.join(os.path.dirname(SCRIPT_PATH), "processed.json")
+VOC_CACHE_PATH = os.path.join(os.path.dirname(SCRIPT_PATH), ".wordbook_cache.json")
 REPO_DIR       = os.path.dirname(SCRIPT_PATH)
 SLEEP_BETWEEN  = 1.6
 RETRY_WAIT     = 60
@@ -190,9 +200,14 @@ def fetch_by_date(target_date, token):
 
 
 def fetch_all_records(token):
-    """拉取学习计划中所有词（用于 backfill）。
-    单次 limit=1000，如果还有就用 offset 继续。"""
-    all_records = []
+    """拉取学习计划中所有词（用于 backfill / wordbook）。
+
+    单次 limit=1000，理论上用 offset 翻页。但实测墨墨这个端点**不认 offset**：
+    无论 offset 传多少，都返回同一批前 1000 条。所以这里以"本页是否带来新 voc_id"
+    作为翻页是否生效的判据——一旦某页没有任何新词（说明 offset 没被服务端尊重，
+    或已到末尾），立即停止，避免死循环 + 内存暴涨。
+    """
+    all_map = {}
     offset = 0
     while True:
         ok, result = api_post("/study/query_study_records",
@@ -202,11 +217,100 @@ def fetch_all_records(token):
         records = result["data"]["records"]
         if not records:
             break
-        all_records.extend(records)
+        before = len(all_map)
+        for r in records:
+            all_map[r["voc_id"]] = r["voc_spelling"]
+        if len(all_map) == before:   # 本页没带来新词 → offset 没生效或已到底
+            break
         if len(records) < 1000:
             break
         offset += len(records)
-    return [{"voc_id": r["voc_id"], "voc_spelling": r["voc_spelling"]} for r in all_records], None
+    return [{"voc_id": v, "voc_spelling": s} for v, s in all_map.items()], None
+
+
+def api_get(path, token):
+    """GET 请求，复用 POST 那套 429 / 5xx / 网络重试逻辑。"""
+    url = f"{BASE_URL}{path}"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    for attempt in range(MAX_RETRIES):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return True, json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            err = e.read().decode("utf-8", errors="replace")
+            last = attempt + 1 >= MAX_RETRIES
+            if e.code == 429:
+                print(f"    ⏳ 限速 429，等待 {RETRY_WAIT}s（第 {attempt+1}/{MAX_RETRIES} 次）...")
+                time.sleep(RETRY_WAIT)
+            elif e.code in (500, 502, 503, 504) and not last:
+                wait = 5 * (2 ** attempt)
+                print(f"    ⏳ 服务端 {e.code}，等待 {wait}s 重试（第 {attempt+1}/{MAX_RETRIES} 次）...")
+                time.sleep(wait)
+            else:
+                return False, f"HTTP {e.code}: {err[:200]}"
+        except urllib.error.URLError as e:
+            if attempt + 1 >= MAX_RETRIES:
+                return False, str(e)
+            wait = 5 * (2 ** attempt)
+            print(f"    ⏳ 网络错误（{e.reason}），等待 {wait}s 重试（第 {attempt+1}/{MAX_RETRIES} 次）...")
+            time.sleep(wait)
+        except Exception as ex:
+            return False, str(ex)
+    return False, f"已达最大重试次数（{MAX_RETRIES}）"
+
+
+def load_voc_cache():
+    try:
+        with open(VOC_CACHE_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_voc_cache(cache):
+    try:
+        with open(VOC_CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"  ⚠ 写入 voc 缓存失败：{e}")
+
+
+def resolve_voc_id(spelling, token, cache):
+    """拼写 → voc_id。命中缓存直接返回（None 表示曾查过但查不到）。"""
+    key = spelling.lower()
+    if key in cache:
+        return cache[key]
+    ok, result = api_get(f"/vocabulary?spelling={urllib.parse.quote(spelling)}", token)
+    voc_id = None
+    if ok:
+        voc = result.get("data", {}).get("voc")
+        if voc:
+            voc_id = voc.get("id")
+    cache[key] = voc_id
+    return voc_id
+
+
+def read_wordbook_file(path):
+    """读词表文件：一行一个单词，忽略空行和 // 或 # 开头的注释行，去重保序。"""
+    words, seen = [], set()
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            w = line.strip()
+            if not w or w.startswith("//") or w.startswith("#"):
+                continue
+            key = w.lower()
+            if key not in seen:
+                seen.add(key)
+                words.append(w)
+    return words
+
+
+def parse_str_argument(flag, default):
+    """从 sys.argv 中提取 --flag VALUE 的字符串值"""
+    for i, arg in enumerate(sys.argv):
+        if arg == flag and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    return default
 
 
 def parse_n_argument(flag, default):
@@ -315,6 +419,93 @@ def cmd_backfill():
     for item in pending:
         print(f'    # {item["voc_spelling"]}')
         print(f'    ("{item["voc_id"]}", "{item["voc_spelling"]}", "note_type", """note_text"""),')
+        print()
+
+
+def cmd_wordbook():
+    """词书模式：从词表文件批量预生成助记的待处理清单。
+
+    用法：python3 run_mnemonics.py --wordbook FILE [--limit N] [--include-selected]
+      FILE                词表文件，一行一个单词
+      --limit N           本批最多输出 N 个待处理词（不传=全部）
+      --include-selected  连"已选入学习计划"的词也一并输出（默认只输出未选词）
+    """
+    path = parse_str_argument("--wordbook", None)
+    if not path:
+        print("用法：python3 run_mnemonics.py --wordbook <词表文件> [--limit N] [--include-selected]")
+        sys.exit(1)
+    if not os.path.isfile(path):
+        print(f"错误：词表文件不存在：{path}", file=sys.stderr)
+        sys.exit(1)
+
+    n = parse_n_argument("--limit", 0)  # 0 = 全部
+    include_selected = "--include-selected" in sys.argv
+
+    token = get_token()
+    done_map = load_processed()
+    words = read_wordbook_file(path)
+    print(f"词书模式：从 {path} 读到 {len(words)} 个去重单词\n")
+    if not words:
+        print("词表为空，没什么可做的。")
+        return
+
+    # 已选入学习计划的 voc_id（用于"未选优先"排序）
+    studied, err = fetch_all_records(token)
+    if err:
+        print(f"⚠ 获取学习计划失败（无法区分已选/未选，全部按未选处理）：{err}")
+        studied_ids = set()
+    else:
+        studied_ids = {w["voc_id"] for w in studied}
+
+    # 拼写 → voc_id（带缓存，避免分批时重复查询）
+    cache = load_voc_cache()
+    resolved, unresolved = [], []
+    new_lookups = 0
+    print("解析 voc_id 中（首次较慢，结果缓存到 .wordbook_cache.json）...")
+    for i, w in enumerate(words, 1):
+        is_cached = w.lower() in cache
+        voc_id = resolve_voc_id(w, token, cache)
+        if voc_id:
+            resolved.append((w, voc_id))
+        else:
+            unresolved.append(w)
+        if not is_cached:
+            new_lookups += 1
+            if new_lookups % 20 == 0:
+                save_voc_cache(cache)
+            time.sleep(0.4)
+    save_voc_cache(cache)
+    print(f"  解析完成：命中 {len(resolved)} / 查无 {len(unresolved)}（本次新查询 {new_lookups} 次）\n")
+
+    # 过滤已有助记
+    pending = [(w, v) for w, v in resolved if needs_note(done_map.get(v))]
+    already_noted = len(resolved) - len(pending)
+
+    # 未选优先
+    unselected = [(w, v) for w, v in pending if v not in studied_ids]
+    selected   = [(w, v) for w, v in pending if v in studied_ids]
+    ordered = unselected + selected if include_selected else unselected
+
+    print(f"已有助记：{already_noted} 词")
+    print(f"待处理：{len(pending)} 词（未选 {len(unselected)} / 已选 {len(selected)}）")
+    if not include_selected and selected:
+        print(f"  默认只输出未选词；已选 {len(selected)} 词交给日常 routine，"
+              f"如需一并生成请加 --include-selected")
+    if unresolved:
+        print(f"⚠ {len(unresolved)} 个词 API 查无 voc_id（核对拼写后可手工处理）：{unresolved[:30]}")
+    print()
+
+    batch = ordered[:n] if n > 0 else ordered
+    if not batch:
+        print("本批无待处理词。")
+        return
+
+    print(f"本批输出 {len(batch)} 词" + (f"（--limit {n}）" if n > 0 else "（全部待处理）"))
+    print('全部 note_text 必须用三引号 """..."""\n')
+    print("─── ALL_NOTES（每词 1~N 条助记）───\n")
+    for w, v in batch:
+        print(f'    # {w}')
+        print(f'    ("{v}", "{w}", "note_type", """note_text"""),')
         print()
 
 
@@ -496,10 +687,10 @@ def _git_push(gh_token, note_count, phrase_count, date_str):
         parts.append(f"{phrase_count} phrases")
     summary = " + ".join(parts) if parts else "no changes"
 
-    cmds = [
-        ["git", "-C", REPO_DIR, "config", "user.email", "routine@claude.ai"],
-        ["git", "-C", REPO_DIR, "config", "user.name", "Claude Routine"],
-    ]
+    # 不再覆盖 user.email / user.name：保留环境自带的签名身份
+    # （commit.gpgsign + noreply@anthropic.com 的签名 key），这样 GitHub 显示
+    # Verified。以前强行设成 routine@claude.ai 会让签名和邮箱对不上 → Unverified。
+    cmds = []
     if gh_token:
         cmds.append(["git", "-C", REPO_DIR, "remote", "set-url", "origin",
                      f"https://x-access-token:{gh_token}@github.com/Kemou2333/momo-auto-mnemonic.git"])
@@ -523,6 +714,8 @@ def _git_push(gh_token, note_count, phrase_count, date_str):
 if __name__ == "__main__":
     if "--backfill" in sys.argv:
         cmd_backfill()
+    elif "--wordbook" in sys.argv:
+        cmd_wordbook()
     elif "--fetch" in sys.argv:
         cmd_fetch()
     else:

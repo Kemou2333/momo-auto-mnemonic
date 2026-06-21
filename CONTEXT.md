@@ -177,6 +177,7 @@ budge
 | 文件 | 作用 | 谁能改 |
 |---|---|---|
 | `CLAUDE.md` | Routine 每次运行时 Claude 读的流程指令 | 只能人类改 |
+| `WORDBOOK.md` | 词书模式（--wordbook）手动操作指南 | 只能人类改 |
 | `MNEMONIC_RULES.md` | 助记风格规则与 note_type 选择指南（子 agent 读） | 只能人类改 |
 | `PHRASE_RULES.md` | 例句风格规则（**功能已暂停**，文档保留备查） | 只能人类改 |
 | `run_mnemonics.py` | 唯一脚本，负责拉词/提交/推送一条龙 | 只能人类改逻辑，Claude 只能改 `ALL_NOTES` 区块 |
@@ -191,9 +192,10 @@ budge
 ### 脚本三种模式
 
 ```bash
-python3 run_mnemonics.py --fetch         # 拉今日+明日待处理，输出 ALL_NOTES 模板
-python3 run_mnemonics.py --backfill 100  # 拉 N 个未处理的老词（批量回填用）
-python3 run_mnemonics.py                 # 提交 ALL_NOTES 里的助记
+python3 run_mnemonics.py --fetch          # 拉今日+明日待处理，输出 ALL_NOTES 模板
+python3 run_mnemonics.py --backfill 100   # 拉 N 个未处理的老词（批量回填用）
+python3 run_mnemonics.py --wordbook FILE  # 词书模式：从词表文件批量预生成助记
+python3 run_mnemonics.py                  # 提交 ALL_NOTES 里的助记
 ```
 
 ---
@@ -376,6 +378,62 @@ Claude Code Routines 会创建 `claude/xxx-yyy-zzz` 这种 feature 分支。
 ### 老词批量回填（用户已请求，本次实现）
 
 已实现 `--backfill N` 模式。用法见下方"老词回填操作指南"。
+
+### 词书模式（用户已请求，本次实现）
+
+`--wordbook FILE` 模式：给一整本词书的词提前批量预生成助记。完整操作指南见
+`WORDBOOK.md`，这里只记设计决策与踩到的坑。
+
+**背景需求**：用户清完高三老词，开始背新云词库（《有道四级核心 500 词》等）。
+新词书每天只在 App 里冒 3~4 个词、临场才背，没法像以前那样"提前一晚统一处理"。
+希望"指定一本书 → 一口气把所有词的助记预置好"，未选词优先。
+
+**关键限制：墨墨开放 API 拉不到官方云词库。** 实测：
+- `/notepads` 只返回**用户自己创建**的云词本，官方云词库不在其中
+- 没有 `/books`、`/library`、notepad 搜索接口（均 404 / invalid id）
+- `/notepads` 的 keyword 参数被忽略
+- 能用的：`GET /notepads/{id}`（读自己词本的词表）、`GET /vocabulary?spelling=X`
+  （拼写 → voc_id）
+
+所以词书模式的词表用**文本文件**给（用户选择的方案）：一行一个词，脚本解析 voc_id
+（缓存到 `.wordbook_cache.json`，已 gitignore）。这样任何来源的词书都能处理，
+不受 API 能不能拉词库限制。
+
+**为什么是"预置助记"而不是"添加单词"**：创建 note 不会把词加进学习计划（只有 App
+选词才会）。所以词书模式本质是把助记提前挂到 voc 上，等用户选词时直接就有。
+默认**未选词优先**（已选词日常 Routine 会照顾到）；`--include-selected` 可一并处理。
+
+**为什么词书模式可以派子 agent，日常坚决不派**：和"为什么主 agent 自己写助记"
+那条不矛盾——日常几十词，重发规则不划算；但整本书 200~300 词一次性跑，单 agent 超时，
+这种一次性大批量场景派子 agent（每个处理一段）才划算。属于例外，不是日常。
+
+**硬隔离日常模式与词书模式**：CLAUDE.md 顶部加了"模式判断"——日常 Routine 永远
+`--fetch`，只有用户明确要求才进词书模式。避免 AI 看到这个功能就自作主张去跑整本书。
+
+### query_study_records 的 offset 失效坑（本次修复）
+
+实测墨墨 `/study/query_study_records` **不认 offset**：无论 offset 传多少，
+都返回同一批前 1000 条。原 `fetch_all_records` 靠 `offset += len(records)` 翻页，
+当学习计划超过 1000 词时会**死循环 + 内存暴涨**（`--backfill` 也潜在中招）。
+已改成"本页没带来新 voc_id 就停"，既能终止又安全。代价：学习计划 >1000 词时
+只能拿到前 1000 条作为"已选"判据——对词书模式只影响排序，误判方向是"偏向多生成"
+（把已选当未选 → 多生成一条无害的 note），可以接受。
+
+### Git 提交 Unverified 修复（本次）
+
+历史问题：每天 Routine 跑完，stop hook 都提示"提交者 routine@claude.ai → GitHub
+显示 Unverified"，然后 AI 花一轮去"修签名"，浪费 token。
+
+根因：远端环境本来就配了提交签名（`commit.gpgsign=true`、ssh 格式、key 绑定
+`noreply@anthropic.com`），但脚本 `_git_push` 强行 `git config user.email
+routine@claude.ai`，加上 `.claude/settings.json` 的 `env` 也把 `GIT_*_EMAIL` 设成
+同一个 → 签名身份和提交邮箱对不上 → Unverified。
+
+修复：脚本里去掉那两行 `git config user.email/name` 覆盖，沿用环境自带的签名身份。
+**还需人类手动改 `.claude/settings.json`**（AI 无权改权限文件）：删掉 `env` 里
+`GIT_AUTHOR_*` / `GIT_COMMITTER_*` 四个变量，并把 allow 里两条 `git config user.*`
+删掉、加一条 `Bash(python3 run_mnemonics.py --wordbook *)`。改完提交即 Verified，
+stop hook 不再唠叨。
 
 ### 助记质量评估
 
