@@ -248,9 +248,17 @@ def cmd_fetch():
     pending = [i for i in combined if i["voc_id"] not in done_map]
     already_done = len(combined) - len(pending)
 
+    # 跳过拼写为空的词：墨墨偶尔会返回 voc_spelling 为空的条目，
+    # 没有词无法生成助记，硬填会得到"（拼写为空，助记暂缺）"之类的垃圾助记。
+    blank = [i for i in pending if not (i["voc_spelling"] or "").strip()]
+    pending = [i for i in pending if (i["voc_spelling"] or "").strip()]
+
     print(f"今日剩余：{len(today_items)} 词")
     print(f"明日安排：{len(tomorrow_items)} 词")
-    print(f"合并去重：{len(combined)} 词  |  已处理：{already_done}  |  待处理：{len(pending)}\n")
+    print(f"合并去重：{len(combined)} 词  |  已处理：{already_done}  |  待处理：{len(pending)}")
+    if blank:
+        print(f"⚠ 跳过拼写为空的词 {len(blank)} 个（不生成助记）：{[i['voc_id'] for i in blank]}")
+    print()
 
     if not pending:
         print("本次无新增，所有词均已处理。")
@@ -285,8 +293,14 @@ def cmd_backfill():
             seen.add(w["voc_id"])
             unique.append(w)
 
+    # 同样跳过拼写为空的词
+    blank = [w for w in unique if not (w["voc_spelling"] or "").strip()]
+    unique = [w for w in unique if (w["voc_spelling"] or "").strip()]
+
     pending_all = [w for w in unique if needs_note(done_map.get(w["voc_id"]))]
     pending = pending_all[:n]
+    if blank:
+        print(f"⚠ 跳过拼写为空的词 {len(blank)} 个（不回填助记）：{[w['voc_id'] for w in blank]}\n")
 
     note_done = sum(1 for v in done_map.values() if v.get("note_date"))
     print(f"学习计划共 {len(unique)} 词")
@@ -345,11 +359,20 @@ def cmd_submit():
     date     = maimemo_today().strftime("%Y-%m-%d")
 
     # ── 分流：分别筛出需要提交的助记 / 例句 ────────────────────────────────
+    # 兜底：拼写为空的词一律不提交，避免把"（拼写为空，助记暂缺）"这类
+    # 占位助记写进墨墨。正常情况下 --fetch / --backfill 已经过滤掉它们了，
+    # 这里是第二道防线。
+    notes_blank = [(v, s) for v, s, _, _ in ALL_NOTES if not (s or "").strip()]
     notes_to_submit = [
         (v, s, t, n) for v, s, t, n in ALL_NOTES
-        if needs_note(done_map.get(v))
+        if (s or "").strip() and needs_note(done_map.get(v))
     ]
-    notes_skipped = [(v, s) for v, s, _, _ in ALL_NOTES if not needs_note(done_map.get(v))]
+    notes_skipped = [
+        (v, s) for v, s, _, _ in ALL_NOTES
+        if (s or "").strip() and not needs_note(done_map.get(v))
+    ]
+    if notes_blank:
+        print(f"⚠ 跳过拼写为空的助记 {len(notes_blank)} 条（不提交）：{[v for v, _ in notes_blank]}")
 
     phrases_to_submit = [
         (v, s, en, zh) for v, s, en, zh in ALL_PHRASES
